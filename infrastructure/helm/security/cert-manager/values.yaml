@@ -1,0 +1,104 @@
+# cert-manager Helm values configuration
+# Version: 1.11.x
+# Purpose: TLS certificate management and automated issuance for TALD UNIA platform
+
+global:
+  # Global logging configuration
+  logLevel: 2
+
+  # Leader election settings
+  leaderElection:
+    namespace: cert-manager
+
+  # RBAC configuration
+  rbac:
+    create: true
+
+  # Pod security policy configuration
+  podSecurityPolicy:
+    enabled: true
+
+# Install Custom Resource Definitions
+installCRDs: true
+
+# Number of controller replicas
+replicaCount: 1
+
+# Resource allocation for cert-manager controller
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "200m"
+    memory: "512Mi"
+
+# Prometheus monitoring configuration
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: true
+    interval: "30s"
+
+# Certificate issuers configuration
+clusterIssuers:
+  # Staging issuer for testing
+  letsencrypt-staging:
+    enabled: true
+    server: "https://acme-staging-v02.api.letsencrypt.org/directory"
+    email: "admin@tald-unia.com"
+    privateKeySecretRef:
+      name: "letsencrypt-staging"
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+
+  # Production issuer for live certificates
+  letsencrypt-prod:
+    enabled: true
+    server: "https://acme-v02.api.letsencrypt.org/directory"
+    email: "admin@tald-unia.com"
+    privateKeySecretRef:
+      name: "letsencrypt-prod"
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+
+# Webhook configuration
+webhook:
+  replicaCount: 1
+  timeoutSeconds: 30
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "100m"
+      memory: "256Mi"
+
+# CA injector configuration
+cainjector:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "100m"
+      memory: "256Mi"
+
+# Pod annotations for monitoring
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9402"
+
+# Node scheduling configuration
+nodeSelector: {}
+
+# Pod tolerations
+tolerations: []
+
+# Pod affinity rules
+affinity: {}
