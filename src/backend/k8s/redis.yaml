@@ -1,0 +1,153 @@
+---
+# Redis StatefulSet Configuration
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tald-redis
+  namespace: tald-system
+  labels:
+    app: tald-redis
+    component: cache
+spec:
+  replicas: 3
+  serviceName: tald-redis
+  selector:
+    matchLabels:
+      app: tald-redis
+  template:
+    metadata:
+      labels:
+        app: tald-redis
+        role: backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      containers:
+        - name: redis
+          image: redis:7.0-alpine  # redis@7.0-alpine - High-performance cache server
+          ports:
+            - containerPort: 6379
+              name: redis
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          args:
+            - "--save 900 1"  # Save if 1 change in 15 minutes
+            - "--save 300 10"  # Save if 10 changes in 5 minutes
+            - "--save 60 10000"  # Save if 10000 changes in 1 minute
+            - "--maxmemory 3gb"
+            - "--maxmemory-policy allkeys-lru"
+            - "--appendonly yes"
+            - "--appendfsync everysec"
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: gp2
+        resources:
+          requests:
+            storage: 20Gi
+        volumeMode: Filesystem
+
+---
+# Redis Service Configuration
+apiVersion: v1
+kind: Service
+metadata:
+  name: tald-redis
+  namespace: tald-system
+  labels:
+    app: tald-redis
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: redis
+  selector:
+    app: tald-redis
+  type: ClusterIP
+  sessionAffinity: ClientIP
+
+---
+# Redis Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tald-redis-network-policy
+  namespace: tald-system
+spec:
+  podSelector:
+    matchLabels:
+      app: tald-redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: backend
+      ports:
+        - port: 6379
+
+---
+# Redis Pod Security Policy
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: tald-redis-psp
+  namespace: tald-system
+spec:
+  privileged: false
+  seLinux:
+    rule: RunAsAny
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+      - min: 999
+      - max: 999
+  volumes:
+    - persistentVolumeClaim
+  allowPrivilegeEscalation: false
+
+---
+# Redis Service Monitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tald-redis-monitor
+  namespace: tald-system
+  labels:
+    app: tald-redis
+spec:
+  endpoints:
+    - port: redis
+      interval: 30s
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app: tald-redis
+  namespaceSelector:
+    matchNames:
+      - tald-system
