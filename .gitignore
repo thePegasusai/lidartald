@@ -1,0 +1,27 @@
+# Dependencies
+**/node_modules
+**/target
+
+# Build outputs
+**/build
+**/dist
+**/*.o
+**/*.so
+**/*.a
+**/*.spv
+
+# Environment and configuration
+**/.env*
+**/terraform.tfstate*
+**/.terraform
+
+# Testing and coverage
+**/coverage
+
+# IDE and editor
+**/.vscode
+**/.idea
+
+# OS specific
+**/.DS_Store
+**/Thumbs.db
