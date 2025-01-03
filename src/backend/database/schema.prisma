@@ -1,0 +1,153 @@
+// @prisma/client v4.x
+// sqlite3 v5.x
+
+// Database configuration
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+  referentialIntegrity = true
+}
+
+// Client generator configuration
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["referentialIntegrity", "fullTextSearch"]
+}
+
+// User role enumeration
+enum Role {
+  GUEST
+  BASIC_USER
+  PREMIUM_USER
+  DEVELOPER
+  ADMIN
+}
+
+// Fleet status enumeration
+enum FleetStatus {
+  ACTIVE
+  INACTIVE
+  FULL
+  CLOSED
+}
+
+// Fleet member role enumeration
+enum FleetRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// User model
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  role      Role     @default(BASIC_USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  scans         ScanData[]
+  fleetMembers  FleetMember[]
+  gameSessions  GameSession[]
+
+  @@index([email, username])
+}
+
+// Scan data model
+model ScanData {
+  id          String   @id @default(uuid())
+  pointCloud  Bytes    // Binary point cloud data
+  metadata    Json     // Scan metadata
+  resolution  Float    // Scan resolution in cm
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime // 7-day retention
+
+  // Relations
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  features    Feature[]
+  environment Environment?
+
+  @@index([createdAt])
+}
+
+// Environment model
+model Environment {
+  id          String   @id @default(uuid())
+  boundaries  Json     // Environment boundaries
+  obstacles   Json     // Obstacle data
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime // 30-day retention
+
+  // Relations
+  scanId        String    @unique
+  scan          ScanData  @relation(fields: [scanId], references: [id])
+  features      Feature[]
+  gameSessions  GameSession[]
+}
+
+// Feature model
+model Feature {
+  id          String   @id @default(uuid())
+  type        String
+  coordinates Json
+  confidence  Float
+  createdAt   DateTime @default(now())
+
+  // Relations
+  scanId        String
+  scan          ScanData     @relation(fields: [scanId], references: [id])
+  environmentId String?
+  environment   Environment? @relation(fields: [environmentId], references: [id])
+}
+
+// Fleet model
+model Fleet {
+  id        String      @id @default(uuid())
+  name      String
+  status    FleetStatus @default(ACTIVE)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relations
+  members     FleetMember[]
+  sessions    GameSession[]
+
+  @@index([status, name])
+}
+
+// Fleet member model
+model FleetMember {
+  id        String    @id @default(uuid())
+  role      FleetRole @default(MEMBER)
+  joinedAt  DateTime  @default(now())
+
+  // Relations
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  fleetId   String
+  fleet     Fleet     @relation(fields: [fleetId], references: [id])
+
+  @@unique([userId, fleetId])
+}
+
+// Game session model
+model GameSession {
+  id        String   @id @default(uuid())
+  type      String
+  metadata  Json
+  startTime DateTime @default(now())
+  endTime   DateTime?
+
+  // Relations
+  fleetId       String
+  fleet         Fleet       @relation(fields: [fleetId], references: [id])
+  environmentId String
+  environment   Environment @relation(fields: [environmentId], references: [id])
+  participants  User[]
+
+  @@index([startTime])
+}
