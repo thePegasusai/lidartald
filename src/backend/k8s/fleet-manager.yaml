@@ -1,0 +1,160 @@
+---
+# Fleet Manager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fleet-manager
+  labels:
+    app: fleet-manager
+    component: networking
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fleet-manager
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: fleet-manager
+        component: networking
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+        - name: fleet-manager
+          image: tald-unia/fleet-manager:latest # Rust 1.70 based image
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 9090
+              name: metrics
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          env:
+            - name: RUST_LOG
+              value: "info"
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: fleet-manager-config
+                  key: redis_url
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+---
+# Fleet Manager Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: fleet-manager
+  labels:
+    app: fleet-manager
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+  selector:
+    app: fleet-manager
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fleet-manager
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fleet-manager
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fleet-manager-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: fleet-manager
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: frontend
+      ports:
+        - port: 8080
+        - port: 9090
+---
+# Pod Security Policy
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: fleet-manager-psp
+spec:
+  privileged: false
+  seLinux:
+    rule: RunAsAny
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+      - min: 1
+        max: 65535
+  volumes:
+    - configMap
+    - secret
+---
+# Service Monitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fleet-manager-monitor
+  labels:
+    app: fleet-manager
+spec:
+  selector:
+    matchLabels:
+      app: fleet-manager
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
