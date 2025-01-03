@@ -1,0 +1,211 @@
+version: "3.9"
+
+services:
+  # LiDAR Core Service - C++ based point cloud processing
+  lidar_core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: cpp-builder
+    image: tald-unia/lidar-core:1.0
+    environment:
+      - LIDAR_SCAN_RATE=30
+      - LIDAR_RESOLUTION=0.01
+      - LIDAR_RANGE=5
+      - LIDAR_BUFFER_SIZE=1048576
+      - GPU_ENABLED=true
+      - CUDA_VISIBLE_DEVICES=0
+    ports:
+      - "9090:9090"
+    volumes:
+      - lidar_data:/data
+      - ./config:/etc/tald/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+        reservations:
+          cpus: "1"
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+  # Fleet Manager Service - Rust based mesh network coordination
+  fleet_manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: rust-builder
+    image: tald-unia/fleet-manager:1.0
+    environment:
+      - RUST_LOG=info
+      - WS_PORT=8080
+      - WS_HOST=0.0.0.0
+      - WS_MAX_CONNECTIONS=32
+      - WS_HEARTBEAT_INTERVAL=30000
+      - WS_TLS_ENABLED=true
+    ports:
+      - "8080:8080"
+    volumes:
+      - fleet_data:/data
+      - ./config:/etc/tald/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Game Engine Service - C++/Vulkan based game runtime
+  game_engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: cpp-builder
+    image: tald-unia/game-engine:1.0
+    environment:
+      - ENABLE_VULKAN=true
+      - ENABLE_CUDA=true
+      - ENABLE_MULTITHREADING=true
+    volumes:
+      - game_data:/data
+      - ./config:/etc/tald/config:ro
+    depends_on:
+      - lidar_core
+      - fleet_manager
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+        reservations:
+          cpus: "1"
+          memory: 2G
+
+  # Social Engine Service - Node.js based user interactions
+  social_engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: node-builder
+    image: tald-unia/social-engine:1.0
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - REDIS_URL=redis://redis:6379
+      - REDIS_KEY_PREFIX=tald:
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    ports:
+      - "3000:3000"
+    volumes:
+      - social_data:/data
+      - ./config:/etc/tald/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis - In-memory cache for session data
+  redis:
+    image: redis:7.0-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # PostgreSQL - Persistent data storage
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-tald}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-tald_unia}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2G
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tald}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  lidar_data:
+    driver: local
+  fleet_data:
+    driver: local
+  game_data:
+    driver: local
+  social_data:
+    driver: local
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+    labels:
+      - "com.tald.network=backend"
