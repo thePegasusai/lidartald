@@ -1,0 +1,174 @@
+# Elasticsearch Helm values configuration for TALD UNIA platform
+# Version: elastic/elasticsearch 8.8.0
+
+# Cluster configuration
+clusterName: tald-unia-es
+nodeGroup: master
+masterService: elasticsearch-master
+
+# Node configuration
+roles:
+  - master
+  - data
+  - ingest
+
+replicas: 3
+minimumMasterNodes: 2
+
+# Resource allocation
+resources:
+  requests:
+    cpu: 1000m
+    memory: 2Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+# Persistence configuration
+persistence:
+  enabled: true
+  storageClass: gp2
+  size: 100Gi
+  annotations:
+    backup.velero.io/backup-volumes: data
+
+# Security settings
+security:
+  tls:
+    enabled: true
+    certificateSecret: es-cert
+  authentication:
+    enabled: true
+    secretName: es-credentials
+  networkPolicy:
+    enabled: true
+    ingressNSMatchLabels:
+      kubernetes.io/metadata.name: monitoring
+
+# Index lifecycle management
+indexLifecyclePolicy:
+  policies:
+    logs:
+      phases:
+        hot:
+          minAge: "0ms"
+          actions:
+            rollover:
+              maxAge: "7d"
+              maxSize: "50GB"
+        warm:
+          minAge: "7d"
+          actions:
+            shrink:
+              numberOfShards: 1
+            forcemerge:
+              maxNumSegments: 1
+        delete:
+          minAge: "30d"
+          actions:
+            delete: {}
+
+# Index templates
+indexTemplates:
+  - name: lidar-logs
+    pattern: lidar.core.*
+    settings:
+      number_of_shards: 3
+      number_of_replicas: 2
+      refresh_interval: "5s"
+  - name: fleet-logs
+    pattern: fleet.manager.*
+    settings:
+      number_of_shards: 3
+      number_of_replicas: 2
+      refresh_interval: "5s"
+  - name: game-logs
+    pattern: game.engine.*
+    settings:
+      number_of_shards: 3
+      number_of_replicas: 2
+      refresh_interval: "5s"
+
+# Additional cluster settings
+cluster:
+  routing:
+    allocation:
+      disk:
+        threshold_enabled: true
+        watermark:
+          low: "85%"
+          high: "90%"
+          flood_stage: "95%"
+
+# JVM configuration
+esJavaOpts: "-Xmx2g -Xms2g"
+
+# Pod configuration
+podManagementPolicy: Parallel
+updateStrategy:
+  type: RollingUpdate
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9200
+    - name: transport
+      port: 9300
+
+# Health checks
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+  httpGet:
+    path: /_cluster/health
+    port: 9200
+    scheme: HTTPS
+
+livenessProbe:
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  httpGet:
+    path: /_cluster/health
+    port: 9200
+    scheme: HTTPS
+
+# Monitoring configuration
+monitoring:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+      interval: 30s
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 1 * * *"
+  repository:
+    type: s3
+    settings:
+      bucket: tald-unia-es-backup
+      region: us-west-2
+
+# Anti-affinity configuration
+antiAffinity:
+  type: hard
+  topologyKey: kubernetes.io/hostname
+
+# Node affinity
+nodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: elasticsearch
+            operator: In
+            values:
+              - enabled
