@@ -1,0 +1,100 @@
+# OAuth2 Proxy Helm Values Configuration
+# Version: 7.4.0
+
+# Number of replicas for high availability
+replicaCount: 3
+
+# Container image configuration
+image:
+  repository: quay.io/oauth2-proxy/oauth2-proxy
+  tag: v7.4.0
+  pullPolicy: IfNotPresent
+
+# Resource allocation
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# OAuth2 Proxy configuration
+config:
+  # OAuth client credentials
+  clientID: ${OAUTH2_PROXY_CLIENT_ID}
+  clientSecret: ${OAUTH2_PROXY_CLIENT_SECRET}
+  cookieSecret: ${OAUTH2_PROXY_COOKIE_SECRET}
+
+  # Cookie settings
+  cookieSecure: true
+  cookieExpiration: "24h"
+  cookieRefresh: "1h"
+
+  # Authentication settings
+  emailDomains: ["*"]
+  provider: "oidc"
+  oidcIssuerURL: ${OAUTH2_PROXY_OIDC_ISSUER_URL}
+  scope: "openid email profile"
+
+  # Upstream services to protect
+  upstreams:
+    - "http://social-engine-svc:8080"
+    - "http://game-engine-svc:8080"
+    - "http://fleet-manager-svc:8080"
+
+  # Skip authentication for health checks and metrics
+  skipAuthRegex:
+    - "^/health$"
+    - "^/metrics$"
+
+  # Authentication failure handling
+  silentAuthenticationFailure: false
+
+  # Session storage configuration
+  sessionStoreType: "redis"
+  redisConnectionURL: ${OAUTH2_PROXY_REDIS_URL}
+
+  # Logging configuration
+  standardLogging: true
+  requestLogging: true
+  authLogging: true
+
+# RBAC configuration
+rbac:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["services"]
+      verbs: ["get", "list"]
+
+# Service account configuration
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: ${OAUTH2_PROXY_IAM_ROLE_ARN}
+
+# Kubernetes service configuration
+service:
+  type: ClusterIP
+  port: 4180
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "4180"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: ${OAUTH2_PROXY_HOST}
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: oauth2-proxy-tls
+      hosts:
+        - ${OAUTH2_PROXY_HOST}
