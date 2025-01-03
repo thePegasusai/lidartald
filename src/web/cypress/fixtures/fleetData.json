@@ -1,0 +1,178 @@
+/**
+ * @fileoverview Type definitions for TALD UNIA Fleet Management System
+ * @version 1.0.0
+ * @license MIT
+ */
+
+/**
+ * Represents 3D position coordinates
+ */
+export interface Position {
+    x: number;
+    y: number;
+    z: number;
+}
+
+/**
+ * Represents orientation in 3D space
+ */
+export interface Orientation {
+    pitch: number;
+    yaw: number;
+    roll: number;
+}
+
+/**
+ * Represents a bounding box in 3D space
+ */
+export interface BoundingBox {
+    min: Position;
+    max: Position;
+}
+
+/**
+ * Device capability specifications
+ */
+export interface DeviceCapabilities {
+    lidarResolution: number;
+    scanRange: number;
+    processingPower: number;
+    meshNetworkBandwidth: number;
+    scanFrequency: number;
+}
+
+/**
+ * Real-time proximity data for participants
+ */
+export interface ProximityData {
+    distance: number;
+    lastUpdate: string;
+    position: Position;
+    orientation: Orientation;
+}
+
+/**
+ * Environment scan and mapping data
+ */
+export interface EnvironmentData {
+    lastScanTimestamp: string;
+    boundingBox: BoundingBox;
+    scanResolution: number;
+    featureCount: number;
+    surfaceArea: number;
+}
+
+/**
+ * Fleet synchronization statistics
+ */
+export interface SyncStats {
+    lastFullSync: string;
+    averageSyncLatency: number;
+    syncSuccess: number;
+    dataTransferred: number;
+}
+
+/**
+ * Mesh network status information
+ */
+export interface MeshNetworkStatus {
+    connected: boolean;
+    latency: number;
+    topology: 'FULL_MESH' | 'PARTIAL_MESH' | 'STAR';
+    activeConnections: number;
+    bandwidthUtilization: number;
+}
+
+/**
+ * Device status and capabilities in the fleet
+ */
+export interface FleetDevice {
+    deviceId: string;
+    participantId: string;
+    status: 'ACTIVE' | 'SYNCING' | 'DISCONNECTED' | 'ERROR';
+    lastSeen: string;
+    networkLatency: number;
+    capabilities: DeviceCapabilities;
+    processingLoad: number;
+    batteryLevel: number;
+}
+
+/**
+ * Fleet member permissions and roles
+ */
+export interface FleetMember {
+    participantId: string;
+    role: 'HOST' | 'MEMBER' | 'OBSERVER';
+    joinedAt: string;
+    permissions: Array<'MANAGE_FLEET' | 'MODIFY_ENVIRONMENT' | 'INVITE_MEMBERS' | 'VIEW_ENVIRONMENT' | 'PARTICIPATE_GAMES'>;
+}
+
+/**
+ * Fleet participant information
+ */
+export interface FleetParticipant {
+    participantId: string;
+    displayName: string;
+    proximityData: ProximityData;
+}
+
+/**
+ * Complete fleet configuration and state
+ */
+export interface Fleet {
+    id: string;
+    name: string;
+    hostDeviceId: string;
+    status: 'ACTIVE' | 'INACTIVE' | 'ERROR';
+    meshNetworkStatus: MeshNetworkStatus;
+    devices: FleetDevice[];
+    members: FleetMember[];
+    participants: FleetParticipant[];
+    environmentMapId: string;
+    environmentData: EnvironmentData;
+    lastSyncTimestamp: number;
+    syncStats: SyncStats;
+    maxDevices: number;
+    createdAt: string;
+    updatedAt: string;
+    version: string;
+    testScenario?: string;
+}
+
+/**
+ * Root-level fleet management data structure
+ */
+export interface FleetManagement {
+    fleets: Fleet[];
+    schemaVersion: string;
+    generatedAt: string;
+}
+
+/**
+ * Type guard to check if an object is a valid Fleet
+ */
+export function isFleet(obj: any): obj is Fleet {
+    return (
+        obj &&
+        typeof obj.id === 'string' &&
+        typeof obj.name === 'string' &&
+        typeof obj.hostDeviceId === 'string' &&
+        Array.isArray(obj.devices) &&
+        Array.isArray(obj.members) &&
+        Array.isArray(obj.participants)
+    );
+}
+
+/**
+ * Type guard to check if an object is a valid FleetDevice
+ */
+export function isFleetDevice(obj: any): obj is FleetDevice {
+    return (
+        obj &&
+        typeof obj.deviceId === 'string' &&
+        typeof obj.participantId === 'string' &&
+        typeof obj.status === 'string' &&
+        typeof obj.lastSeen === 'string' &&
+        typeof obj.networkLatency === 'number'
+    );
+}
