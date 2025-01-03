@@ -1,0 +1,98 @@
+{{/* Generate ConfigMaps for TALD UNIA platform components */}}
+
+{{/* LiDAR Core ConfigMap */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-lidar-core-config
+  labels:
+    app.kubernetes.io/name: lidar-core
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  config.yaml: |
+    environment: {{ .Values.global.environment }}
+    monitoring:
+      enabled: {{ .Values.global.monitoring.enabled }}
+      scrapeInterval: {{ .Values.global.monitoring.scrapeInterval }}
+    lidarCore:
+      scanRate: {{ .Values.lidarCore.scanRate }}
+      resolution: {{ .Values.lidarCore.resolution }}
+      range: {{ .Values.lidarCore.range }}
+      gpu:
+        enabled: {{ gt (.Values.lidarCore.resources.requests.nvidia\.com/gpu | default 0) 0 }}
+
+---
+{{/* Fleet Manager ConfigMap */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-fleet-manager-config
+  labels:
+    app.kubernetes.io/name: fleet-manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  config.yaml: |
+    environment: {{ .Values.global.environment }}
+    monitoring:
+      enabled: {{ .Values.global.monitoring.enabled }}
+      scrapeInterval: {{ .Values.global.monitoring.scrapeInterval }}
+    fleetManager:
+      meshNetwork:
+        maxDevices: {{ .Values.fleetManager.meshNetwork.maxDevices }}
+        discoveryInterval: {{ .Values.fleetManager.meshNetwork.discoveryInterval }}
+      security:
+        tls:
+          enabled: {{ .Values.global.security.tls.enabled }}
+
+---
+{{/* Game Engine ConfigMap */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-game-engine-config
+  labels:
+    app.kubernetes.io/name: game-engine
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  config.yaml: |
+    environment: {{ .Values.global.environment }}
+    monitoring:
+      enabled: {{ .Values.global.monitoring.enabled }}
+      scrapeInterval: {{ .Values.global.monitoring.scrapeInterval }}
+    gameEngine:
+      vulkan:
+        enabled: {{ .Values.gameEngine.vulkan.enabled }}
+        version: {{ .Values.gameEngine.vulkan.version }}
+      gpu:
+        enabled: {{ gt (.Values.gameEngine.resources.requests.nvidia\.com/gpu | default 0) 0 }}
+
+---
+{{/* Social Engine ConfigMap */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-social-engine-config
+  labels:
+    app.kubernetes.io/name: social-engine
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+data:
+  config.yaml: |
+    environment: {{ .Values.global.environment }}
+    monitoring:
+      enabled: {{ .Values.global.monitoring.enabled }}
+      scrapeInterval: {{ .Values.global.monitoring.scrapeInterval }}
+    socialEngine:
+      websocket:
+        enabled: {{ .Values.socialEngine.websocket.enabled }}
+        maxConnections: {{ .Values.socialEngine.websocket.maxConnections }}
+      security:
+        tls:
+          enabled: {{ .Values.global.security.tls.enabled }}
