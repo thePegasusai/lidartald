@@ -1,0 +1,190 @@
+---
+# Social Engine Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: social-engine
+  labels:
+    app: social-engine
+    component: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: social-engine
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: social-engine
+        component: backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+        - name: social-engine
+          image: node:18-alpine
+          ports:
+            - containerPort: 3000
+              name: http
+            - containerPort: 8080
+              name: websocket
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3000"
+            - name: API_VERSION
+              value: "v1"
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+            - name: tmp-volume
+              mountPath: /tmp
+      volumes:
+        - name: config-volume
+          configMap:
+            name: social-engine-config
+        - name: tmp-volume
+          emptyDir: {}
+
+---
+# Social Engine Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: social-engine
+  labels:
+    app: social-engine
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+    - name: websocket
+      port: 8080
+      targetPort: 8080
+  selector:
+    app: social-engine
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: social-engine
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: social-engine
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: social-engine-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: social-engine
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: frontend
+      ports:
+        - port: 3000
+          protocol: TCP
+        - port: 8080
+          protocol: TCP
+
+---
+# Pod Security Policy
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: social-engine-psp
+spec:
+  privileged: false
+  seLinux:
+    rule: RunAsAny
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+      - min: 1
+        max: 65535
+  volumes:
+    - configMap
+    - secret
+    - emptyDir
+
+---
+# Service Monitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: social-engine-monitor
+  labels:
+    app: social-engine
+spec:
+  selector:
+    matchLabels:
+      app: social-engine
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+
+---
+# Resource Quota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: social-engine-quota
+spec:
+  hard:
+    requests.cpu: "1"
+    limits.cpu: "2"
+    requests.memory: "2Gi"
+    limits.memory: "4Gi"
