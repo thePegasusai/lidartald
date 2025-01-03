@@ -1,0 +1,202 @@
+---
+# Network Policy for LiDAR Core
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lidar-core-network-policy
+  namespace: tald-unia
+spec:
+  podSelector:
+    matchLabels:
+      app: lidar-core
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: backend
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Pod Security Policy
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: lidar-core-psp
+  namespace: tald-unia
+spec:
+  privileged: true
+  seLinux:
+    rule: RunAsAny
+  runAsUser:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  volumes:
+    - configMap
+    - secret
+    - emptyDir
+  allowedCapabilities:
+    - SYS_ADMIN  # Required for CUDA operations
+
+---
+# ConfigMap for LiDAR Core configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lidar-core-config
+  namespace: tald-unia
+data:
+  PCL_VERSION: "1.12.0"
+  CUDA_VERSION: "12.0"
+  SCAN_RATE: "30"
+  RESOLUTION: "0.01"
+
+---
+# LiDAR Core Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lidar-core
+  namespace: tald-unia
+  labels:
+    app: lidar-core
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: lidar-core
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: lidar-core
+        role: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: lidar-core
+          image: tald-unia/lidar-core:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: point-cloud-cache
+              mountPath: /cache
+            - name: config-volume
+              mountPath: /etc/lidar-core
+          env:
+            - name: SCAN_RATE
+              valueFrom:
+                configMapKeyRef:
+                  name: lidar-core-config
+                  key: SCAN_RATE
+            - name: RESOLUTION
+              valueFrom:
+                configMapKeyRef:
+                  name: lidar-core-config
+                  key: RESOLUTION
+            - name: CUDA_VISIBLE_DEVICES
+              value: "0"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: point-cloud-cache
+          emptyDir: {}
+        - name: config-volume
+          configMap:
+            name: lidar-core-config
+      nodeSelector:
+        nvidia.com/gpu: "present"
+
+---
+# LiDAR Core Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: lidar-core
+  namespace: tald-unia
+  labels:
+    app: lidar-core
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    app: lidar-core
+  type: ClusterIP
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: lidar-core-hpa
+  namespace: tald-unia
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: lidar-core
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+
+---
+# Service Monitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: lidar-core-monitor
+  namespace: tald-unia
+  labels:
+    app: lidar-core
+spec:
+  selector:
+    matchLabels:
+      app: lidar-core
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
