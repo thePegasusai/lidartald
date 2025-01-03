@@ -1,0 +1,306 @@
+openapi: 3.0.0
+info:
+  title: TALD UNIA API
+  version: 1.0.0
+  description: |
+    API specification for the TALD UNIA handheld gaming platform with LiDAR technology
+    and fleet ecosystem capabilities. Supports real-time environment scanning, social
+    gaming features, and mesh network coordination.
+
+servers:
+  - url: /api
+    description: TALD UNIA API endpoint
+
+security:
+  - BearerAuth: []
+  - HardwareToken: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token with hardware signature
+    HardwareToken:
+      type: apiKey
+      in: header
+      name: X-Hardware-Token
+      description: Device-specific hardware token for authentication
+
+  schemas:
+    UserProfile:
+      type: object
+      required:
+        - id
+        - deviceId
+        - username
+      properties:
+        id:
+          type: string
+          format: uuid
+        deviceId:
+          type: string
+          format: hardware-token
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: ^[a-zA-Z0-9_-]+$
+        level:
+          type: integer
+          minimum: 1
+        experience:
+          type: integer
+          minimum: 0
+        preferences:
+          $ref: '#/components/schemas/UserPreferences'
+
+    UserPreferences:
+      type: object
+      properties:
+        scanResolution:
+          type: number
+          minimum: 0.01
+          maximum: 1.00
+          description: LiDAR scan resolution in centimeters
+        scanRange:
+          type: number
+          minimum: 1
+          maximum: 5
+          description: Maximum scan range in meters
+        autoJoinFleet:
+          type: boolean
+        defaultGameMode:
+          type: string
+        privacySettings:
+          type: object
+          properties:
+            profileVisibility:
+              type: string
+              enum: [public, friends, private]
+            locationSharing:
+              type: boolean
+            fleetDiscoverable:
+              type: boolean
+
+    Fleet:
+      type: object
+      required:
+        - id
+        - name
+        - hostDeviceId
+        - status
+        - devices
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 3
+          maxLength: 50
+        hostDeviceId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [INITIALIZING, ACTIVE, SYNCING, DISCONNECTED]
+        devices:
+          type: array
+          maxItems: 32
+          items:
+            $ref: '#/components/schemas/FleetDevice'
+        maxDevices:
+          type: integer
+          minimum: 2
+          maximum: 32
+
+    FleetDevice:
+      type: object
+      required:
+        - deviceId
+        - userId
+        - status
+        - capabilities
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [INITIALIZING, ACTIVE, SYNCING, DISCONNECTED]
+        lastSeen:
+          type: string
+          format: date-time
+        capabilities:
+          $ref: '#/components/schemas/DeviceCapabilities'
+
+    DeviceCapabilities:
+      type: object
+      required:
+        - lidarResolution
+        - scanRange
+        - processingPower
+      properties:
+        lidarResolution:
+          type: number
+          minimum: 0.01
+          maximum: 1.00
+        scanRange:
+          type: number
+          minimum: 1
+          maximum: 5
+        processingPower:
+          type: number
+          minimum: 0
+          maximum: 100
+
+paths:
+  /v1/fleet/discover:
+    post:
+      summary: Discover nearby fleet devices
+      operationId: discoverFleet
+      tags: [Fleet]
+      security:
+        - BearerAuth: []
+        - HardwareToken: []
+      x-rateLimit:
+        limit: 10
+        window: 60000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - deviceId
+                - scanRange
+              properties:
+                deviceId:
+                  type: string
+                  format: uuid
+                scanRange:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+      responses:
+        '200':
+          description: Nearby devices discovered
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FleetDevice'
+        '429':
+          description: Rate limit exceeded
+
+  /v1/fleet/connect:
+    put:
+      summary: Connect to fleet
+      operationId: connectFleet
+      tags: [Fleet]
+      security:
+        - BearerAuth: []
+        - HardwareToken: []
+      x-rateLimit:
+        limit: 5
+        window: 60000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fleetId
+                - deviceId
+                - capabilities
+              properties:
+                fleetId:
+                  type: string
+                  format: uuid
+                deviceId:
+                  type: string
+                  format: uuid
+                capabilities:
+                  $ref: '#/components/schemas/DeviceCapabilities'
+      responses:
+        '200':
+          description: Successfully connected to fleet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fleet'
+        '429':
+          description: Rate limit exceeded
+
+  /v1/environment/sync:
+    patch:
+      summary: Synchronize environment data
+      operationId: syncEnvironment
+      tags: [Environment]
+      security:
+        - BearerAuth: []
+        - HardwareToken: []
+      x-rateLimit:
+        limit: 30
+        window: 60000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fleetId
+                - environmentData
+                - timestamp
+              properties:
+                fleetId:
+                  type: string
+                  format: uuid
+                environmentData:
+                  type: object
+                  description: Point cloud and feature data
+                timestamp:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: Environment synchronized
+        '429':
+          description: Rate limit exceeded
+
+  /v1/user/profile:
+    get:
+      summary: Get user profile
+      operationId: getUserProfile
+      tags: [User]
+      security:
+        - BearerAuth: []
+      x-rateLimit:
+        limit: 20
+        window: 60000
+      responses:
+        '200':
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '429':
+          description: Rate limit exceeded
+
+tags:
+  - name: Fleet
+    description: Fleet management and coordination endpoints
+  - name: Environment
+    description: Environment scanning and synchronization endpoints
+  - name: User
+    description: User profile and preferences management
