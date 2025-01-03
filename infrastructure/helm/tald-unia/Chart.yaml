@@ -1,0 +1,49 @@
+apiVersion: v2
+name: tald-unia
+version: 1.0.0
+kubeVersion: ">=1.27.0"
+description: TALD UNIA Platform - LiDAR-enabled handheld gaming platform with fleet ecosystem supporting real-time environment scanning, mesh networking, and social gaming features
+type: application
+appVersion: "1.0.0"
+
+# Chart dependencies
+dependencies:
+  - name: prometheus-operator
+    version: 45.x.x
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: monitoring.enabled
+
+  - name: elasticsearch
+    version: 7.17.x
+    repository: https://helm.elastic.co
+    condition: monitoring.elasticsearch.enabled
+
+  - name: redis
+    version: 17.x.x
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+
+  - name: cert-manager
+    version: 1.11.x
+    repository: https://charts.jetstack.io
+    condition: global.security.tls.enabled
+
+# Chart metadata
+maintainers:
+  - name: TALD UNIA Team
+    email: team@tald-unia.com
+
+keywords:
+  - lidar
+  - gaming
+  - fleet
+  - mesh-network
+  - social-gaming
+  - real-time-scanning
+  - kubernetes
+
+home: https://tald-unia.com
+sources:
+  - https://github.com/tald-unia/tald-unia
+
+engine: gotpl
