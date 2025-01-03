@@ -1,0 +1,34 @@
+src/backend/lidar_core/** @lidar-team @performance-team
+
+# Fleet Manager - Fleet coordination and mesh networking
+src/backend/fleet_manager/** @fleet-team @network-team
+
+# Game Engine - Game engine and graphics rendering
+src/backend/game_engine/** @game-team @graphics-team
+
+# Social Engine - Social features and user interactions
+src/backend/social_engine/** @social-team @backend-team
+
+# Web Frontend - Web frontend and UI components
+src/web/** @frontend-team @ui-team
+
+# Security - Security implementations and configurations
+src/backend/security/** @security-team
+
+# Infrastructure - Infrastructure and deployment configurations
+infrastructure/** @devops-team @platform-team
+
+# CI/CD - Workflow configurations
+.github/workflows/** @devops-team @ci-team
+
+# Database - Schemas and migrations
+src/backend/database/** @database-team @backend-team
+
+# Monitoring - Monitoring and observability configurations
+src/backend/monitoring/** @platform-team @sre-team
+
+# Tests - Test suites and testing infrastructure
+**/tests/** @qa-team
+
+# Default ownership
+* @core-team
