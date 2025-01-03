@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="TALD UNIA - LiDAR-enabled handheld gaming platform">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' wss:; img-src 'self' data: blob:; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline';">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    
+    <!-- PWA Configuration -->
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" type="image/x-icon" href="./favicon.ico">
+    
+    <!-- Critical Resources Preload -->
+    <link rel="preload" href="./src/styles/global.css" as="style">
+    <link rel="preconnect" href="wss://fleet-mesh.tald-unia.local">
+    <link rel="prefetch" href="./lidar-core.js">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="./src/styles/global.css">
+    
+    <title>TALD UNIA</title>
+</head>
+<body>
+    <!-- React Mount Point -->
+    <div id="root"></div>
+    
+    <!-- Fallback for JavaScript disabled -->
+    <noscript>
+        <div style="text-align: center; padding: 20px;">
+            JavaScript must be enabled to run this application
+        </div>
+    </noscript>
+    
+    <!-- Development Server Script -->
+    <script type="module" src="@vite/client"></script>
+    
+    <!-- Application Entry Point -->
+    <script type="module" src="./src/index.tsx"></script>
+    
+    <!-- Register Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                    .catch(error => console.error('ServiceWorker registration failed:', error));
+            });
+        }
+    </script>
+</body>
+</html>
