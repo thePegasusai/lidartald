@@ -1,0 +1,179 @@
+{
+  "users": [
+    {
+      "id": "user-001",
+      "email": "player1@tald.com",
+      "username": "player1",
+      "role": "BASIC_USER",
+      "createdAt": "2023-06-01T00:00:00Z",
+      "updatedAt": "2023-06-15T12:00:00Z",
+      "profile": {
+        "userId": "user-001",
+        "displayName": "Player One",
+        "level": 15,
+        "experience": 2500,
+        "lastActive": "2023-06-15T11:30:00Z",
+        "preferences": {
+          "theme": "dark",
+          "scanResolution": 0.01,
+          "scanRange": 5.0,
+          "notifications": {
+            "fleetInvites": true,
+            "proximityAlerts": true,
+            "achievementAlerts": true
+          },
+          "accessibility": {
+            "highContrast": false,
+            "reducedMotion": false
+          }
+        },
+        "privacySettings": {
+          "shareLocation": true,
+          "shareActivity": true,
+          "shareFleetHistory": true,
+          "dataRetentionDays": 30
+        },
+        "fleetHistory": [
+          {
+            "fleetId": "fleet-001",
+            "joinedAt": "2023-06-14T10:00:00Z",
+            "leftAt": "2023-06-14T11:30:00Z",
+            "role": "MEMBER"
+          }
+        ],
+        "achievementIds": ["ACH_001", "ACH_002"]
+      },
+      "location": {
+        "userId": "user-001",
+        "distance": 2.5,
+        "lastUpdate": "2023-06-15T11:30:00Z",
+        "accuracy": 0.01,
+        "coordinates": {
+          "lat": 37.7849,
+          "lng": -122.3968
+        },
+        "isVisible": true
+      }
+    },
+    {
+      "id": "user-002",
+      "email": "player2@tald.com",
+      "username": "player2",
+      "role": "PREMIUM_USER",
+      "createdAt": "2023-06-01T00:00:00Z",
+      "updatedAt": "2023-06-15T12:00:00Z",
+      "profile": {
+        "userId": "user-002",
+        "displayName": "Player Two",
+        "level": 25,
+        "experience": 5000,
+        "lastActive": "2023-06-15T11:45:00Z",
+        "preferences": {
+          "theme": "light",
+          "scanResolution": 0.01,
+          "scanRange": 5.0,
+          "notifications": {
+            "fleetInvites": true,
+            "proximityAlerts": true,
+            "achievementAlerts": true
+          },
+          "accessibility": {
+            "highContrast": true,
+            "reducedMotion": false
+          }
+        },
+        "privacySettings": {
+          "shareLocation": true,
+          "shareActivity": false,
+          "shareFleetHistory": true,
+          "dataRetentionDays": 7
+        },
+        "fleetHistory": [
+          {
+            "fleetId": "fleet-001",
+            "joinedAt": "2023-06-14T10:00:00Z",
+            "leftAt": "2023-06-14T11:30:00Z",
+            "role": "HOST"
+          }
+        ],
+        "achievementIds": ["ACH_001", "ACH_003", "ACH_004"]
+      },
+      "location": {
+        "userId": "user-002",
+        "distance": 3.7,
+        "lastUpdate": "2023-06-15T11:45:00Z",
+        "accuracy": 0.01,
+        "coordinates": {
+          "lat": 37.7852,
+          "lng": -122.3972
+        },
+        "isVisible": true
+      }
+    },
+    {
+      "id": "user-003",
+      "email": "player3@tald.com",
+      "username": "player3",
+      "role": "BASIC_USER",
+      "createdAt": "2023-06-01T00:00:00Z",
+      "updatedAt": "2023-06-15T12:00:00Z",
+      "profile": {
+        "userId": "user-003",
+        "displayName": "Player Three",
+        "level": 8,
+        "experience": 1200,
+        "lastActive": "2023-06-15T10:30:00Z",
+        "preferences": {
+          "theme": "system",
+          "scanResolution": 0.01,
+          "scanRange": 4.0,
+          "notifications": {
+            "fleetInvites": false,
+            "proximityAlerts": true,
+            "achievementAlerts": false
+          },
+          "accessibility": {
+            "highContrast": false,
+            "reducedMotion": true
+          }
+        },
+        "privacySettings": {
+          "shareLocation": false,
+          "shareActivity": false,
+          "shareFleetHistory": false,
+          "dataRetentionDays": 14
+        },
+        "fleetHistory": [],
+        "achievementIds": ["ACH_001"]
+      },
+      "location": {
+        "userId": "user-003",
+        "distance": 4.8,
+        "lastUpdate": "2023-06-15T10:30:00Z",
+        "accuracy": 0.01,
+        "coordinates": {
+          "lat": 37.7855,
+          "lng": -122.3975
+        },
+        "isVisible": false
+      }
+    }
+  ],
+  "authStates": {
+    "authenticated": {
+      "token": "mock-jwt-token",
+      "user": {
+        "id": "user-001",
+        "role": "BASIC_USER"
+      },
+      "expiresAt": "2023-06-16T11:30:00Z",
+      "refreshToken": "mock-refresh-token"
+    },
+    "unauthenticated": {
+      "token": null,
+      "user": null,
+      "expiresAt": null,
+      "refreshToken": null
+    }
+  }
+}
