@@ -1,0 +1,217 @@
+---
+# StatefulSet for SQLite Database
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tald-db
+  namespace: tald-system
+  labels:
+    app: tald-db
+    component: database
+    tier: storage
+spec:
+  replicas: 1
+  serviceName: tald-db
+  selector:
+    matchLabels:
+      app: tald-db
+      component: database
+      tier: storage
+  template:
+    metadata:
+      labels:
+        app: tald-db
+        component: database
+        tier: storage
+    spec:
+      securityContext:
+        fsGroup: 2000
+        runAsUser: 1000
+        runAsNonRoot: true
+      containers:
+        - name: sqlite
+          image: sqlite:3.42.0
+          ports:
+            - containerPort: 5432
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/sqlite
+          readinessProbe:
+            exec:
+              command: ["sqlite3", "-version"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sqlite3", "-version"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 50Gi
+        storageClassName: gp2
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tald-db-network-policy
+  namespace: tald-system
+spec:
+  podSelector:
+    matchLabels:
+      app: tald-db
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: backend
+      ports:
+        - port: 5432
+          protocol: TCP
+
+---
+# Pod Security Policy
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: tald-db-psp
+  namespace: tald-system
+spec:
+  privileged: false
+  seLinux:
+    rule: RunAsAny
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+      - min: 2000
+      - max: 2000
+  volumes:
+    - persistentVolumeClaim
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  readOnlyRootFilesystem: true
+
+---
+# Service Monitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: tald-db-monitor
+  namespace: tald-system
+spec:
+  selector:
+    matchLabels:
+      app: tald-db
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 25s
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - tald-system
+
+---
+# CronJob for Database Backup
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tald-db-backup
+  namespace: tald-system
+spec:
+  schedule: "*/15 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: backup-tool:latest
+              env:
+                - name: BACKUP_BUCKET
+                  value: tald-db-backups
+                - name: AWS_REGION
+                  value: us-west-2
+                - name: ENCRYPTION_TYPE
+                  value: AES256
+                - name: COMPRESSION_TYPE
+                  value: zstd
+                - name: RETENTION_DAYS
+                  value: "7"
+              volumeMounts:
+                - name: db-data
+                  mountPath: /backup/source
+                  readOnly: true
+          volumes:
+            - name: db-data
+              persistentVolumeClaim:
+                claimName: data-tald-db-0
+          restartPolicy: OnFailure
+
+---
+# CronJob for Data Cleanup
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: tald-db-cleanup
+  namespace: tald-system
+spec:
+  schedule: "0 0 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: cleanup
+              image: db-maintenance:latest
+              env:
+                - name: SCAN_DATA_RETENTION
+                  value: "7d"
+                - name: ENVIRONMENT_RETENTION
+                  value: "30d"
+                - name: FLEET_STATE_RETENTION
+                  value: "session"
+                - name: GRACE_PERIOD
+                  value: "24h"
+                - name: CLEANUP_POLICY
+                  value: "soft_delete"
+          restartPolicy: OnFailure
+
+---
+# Service for Database Access
+apiVersion: v1
+kind: Service
+metadata:
+  name: tald-db
+  namespace: tald-system
+  labels:
+    app: tald-db
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: sqlite
+  selector:
+    app: tald-db
