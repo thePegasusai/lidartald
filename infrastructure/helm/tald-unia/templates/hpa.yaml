@@ -1,0 +1,106 @@
+{{/* Generate HPA template for TALD UNIA components */}}
+{{- define "tald-unia.hpa.tpl" -}}
+{{- $component := index . 0 -}}
+{{- $name := index . 1 -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}-hpa
+  labels:
+    {{- include "tald-unia.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $component.autoscaling.minReplicas }}
+  maxReplicas: {{ $component.autoscaling.maxReplicas }}
+  metrics:
+    {{- if $component.autoscaling.targetCPUUtilization }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $component.autoscaling.targetCPUUtilization }}
+    {{- end }}
+    {{- if $component.autoscaling.targetMemoryUtilization }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $component.autoscaling.targetMemoryUtilization }}
+    {{- end }}
+    {{- if eq $name "lidar-core" }}
+    - type: Pods
+      pods:
+        metric:
+          name: scan_rate
+        target:
+          type: AverageValue
+          averageValue: "30"
+    {{- end }}
+    {{- if eq $name "fleet-manager" }}
+    - type: Pods
+      pods:
+        metric:
+          name: mesh_connections
+        target:
+          type: AverageValue
+          averageValue: "16"
+    {{- end }}
+    {{- if eq $name "game-engine" }}
+    - type: Pods
+      pods:
+        metric:
+          name: frame_rate
+        target:
+          type: AverageValue
+          averageValue: "60"
+    {{- end }}
+    {{- if eq $name "social-engine" }}
+    - type: Pods
+      pods:
+        metric:
+          name: network_latency
+        target:
+          type: AverageValue
+          averageValue: "50"
+    {{- end }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 120
+{{- end -}}
+
+{{/* Generate HPAs for each component if autoscaling is enabled */}}
+{{- if .Values.lidarCore.autoscaling.enabled }}
+---
+{{ include "tald-unia.hpa.tpl" (list .Values.lidarCore "lidar-core") }}
+{{- end }}
+
+{{- if .Values.fleetManager.autoscaling.enabled }}
+---
+{{ include "tald-unia.hpa.tpl" (list .Values.fleetManager "fleet-manager") }}
+{{- end }}
+
+{{- if .Values.gameEngine.autoscaling.enabled }}
+---
+{{ include "tald-unia.hpa.tpl" (list .Values.gameEngine "game-engine") }}
+{{- end }}
+
+{{- if .Values.socialEngine.autoscaling.enabled }}
+---
+{{ include "tald-unia.hpa.tpl" (list .Values.socialEngine "social-engine") }}
+{{- end }}
