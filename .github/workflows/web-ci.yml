@@ -1,0 +1,163 @@
+name: Web CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_ENV: test
+  CI: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            node_modules
+            ~/.npm
+            dist
+            coverage
+          key: npm-deps-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-deps-
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: src/web
+
+      - name: Type check
+        run: npm run typecheck
+        working-directory: src/web
+
+      - name: Lint check
+        run: npm run lint
+        working-directory: src/web
+
+      - name: Build application
+        run: npm run build
+        working-directory: src/web
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: src/web/dist
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          cache: 'npm'
+
+      - name: Restore cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            node_modules
+            ~/.npm
+            coverage
+          key: npm-deps-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: src/web
+
+      - name: Run unit tests
+        run: npm run test:coverage
+        working-directory: src/web
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        working-directory: src/web
+
+      - name: Upload test coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: src/web/coverage
+
+      - name: Upload E2E artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: cypress-artifacts
+          path: |
+            src/web/cypress/videos
+            src/web/cypress/screenshots
+        if: always()
+
+      - name: Check test coverage thresholds
+        run: |
+          COVERAGE_REPORT="src/web/coverage/coverage-summary.json"
+          THRESHOLD=80
+          
+          BRANCHES=$(jq '.total.branches.pct' "$COVERAGE_REPORT")
+          FUNCTIONS=$(jq '.total.functions.pct' "$COVERAGE_REPORT")
+          LINES=$(jq '.total.lines.pct' "$COVERAGE_REPORT")
+          STATEMENTS=$(jq '.total.statements.pct' "$COVERAGE_REPORT")
+          
+          if (( $(echo "$BRANCHES < $THRESHOLD" | bc -l) )) || \
+             (( $(echo "$FUNCTIONS < $THRESHOLD" | bc -l) )) || \
+             (( $(echo "$LINES < $THRESHOLD" | bc -l) )) || \
+             (( $(echo "$STATEMENTS < $THRESHOLD" | bc -l) )); then
+            echo "Coverage is below threshold of $THRESHOLD%"
+            echo "Branches: $BRANCHES%"
+            echo "Functions: $FUNCTIONS%"
+            echo "Lines: $LINES%"
+            echo "Statements: $STATEMENTS%"
+            exit 1
+          fi
+
+  notify:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Notify on failure
+        if: ${{ failure() }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ CI pipeline failed. Please check the logs for details.'
+            })
+
+      - name: Notify on success
+        if: ${{ success() }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ CI pipeline passed successfully!'
+            })
