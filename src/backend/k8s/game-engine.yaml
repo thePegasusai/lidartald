@@ -1,0 +1,206 @@
+---
+# Game Engine Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: game-engine
+  labels:
+    app: game-engine
+    role: backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: game-engine
+  template:
+    metadata:
+      labels:
+        app: game-engine
+        role: backend
+        gpu: required
+    spec:
+      nodeSelector:
+        gpu: nvidia-tesla
+      containers:
+        - name: game-engine
+          image: tald-unia/game-engine:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9000
+              name: http
+          resources:
+            requests:
+              cpu: "4"
+              memory: 8Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "8"
+              memory: 16Gi
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: game-state
+              mountPath: /state
+            - name: shaders
+              mountPath: /shaders
+              readOnly: true
+            - name: vulkan-sdk
+              mountPath: /usr/local/vulkan
+              readOnly: true
+          env:
+            - name: VULKAN_SDK_PATH
+              value: /usr/local/vulkan
+            - name: PHYSICS_TIMESTEP
+              value: "0.016"
+            - name: TARGET_FPS
+              value: "60"
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "compute,utility,graphics"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: game-state
+          emptyDir: {}
+        - name: shaders
+          configMap:
+            name: game-engine-shaders
+        - name: vulkan-sdk
+          hostPath:
+            path: /usr/local/vulkan
+            type: Directory
+
+---
+# Game Engine Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: game-engine
+  labels:
+    app: game-engine
+spec:
+  ports:
+    - port: 9000
+      targetPort: 9000
+      name: http
+  selector:
+    app: game-engine
+  type: ClusterIP
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: game-engine
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: game-engine
+  minReplicas: 3
+  maxReplicas: 10
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: game-engine-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: game-engine
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              role: backend
+      ports:
+        - port: 9000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app: lidar-core
+
+---
+# Pod Security Policy
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: game-engine-psp
+spec:
+  privileged: true
+  seLinux:
+    rule: RunAsAny
+  runAsUser:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  volumes:
+    - configMap
+    - secret
+    - emptyDir
+    - hostPath
+  allowedHostPaths:
+    - pathPrefix: /usr/local/nvidia
+      readOnly: true
+
+---
+# Service Monitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: game-engine
+  labels:
+    app: game-engine
+spec:
+  selector:
+    matchLabels:
+      app: game-engine
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 14s
