@@ -1,0 +1,219 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'src/**'
+      - 'infrastructure/**'
+      - '.github/workflows/deploy-staging.yml'
+  workflow_dispatch:
+
+env:
+  ENVIRONMENT: staging
+  AWS_REGION: us-west-2
+  CLUSTER_NAME: tald-unia-staging
+  DOMAIN: staging.tald-unia.com
+  GPU_INSTANCE_TYPE: g4dn.xlarge
+  MAX_MESH_NODES: 32
+  SCAN_RATE_THRESHOLD: 30
+  MAX_LATENCY: 50
+
+permissions:
+  id-token: write
+  contents: read
+  deployments: write
+  packages: read
+  gpu-resources: write
+  monitoring: write
+
+jobs:
+  build:
+    name: Build Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build_artifacts
+          path: artifacts/backend
+
+      - name: Download frontend artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: dist
+          path: artifacts/frontend
+
+      - name: Upload deployment artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-artifacts
+          path: artifacts
+          retention-days: 1
+
+  setup_infrastructure:
+    name: Setup Infrastructure
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Initialize Terraform
+        run: |
+          cd infrastructure/terraform/environments/staging
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=staging/terraform.tfstate"
+
+      - name: Validate Terraform
+        run: |
+          cd infrastructure/terraform/environments/staging
+          terraform validate
+
+      - name: Plan infrastructure changes
+        run: |
+          cd infrastructure/terraform/environments/staging
+          terraform plan \
+            -var="environment=staging" \
+            -var="gpu_instance_type=${{ env.GPU_INSTANCE_TYPE }}" \
+            -var="max_mesh_nodes=${{ env.MAX_MESH_NODES }}" \
+            -out=tfplan
+
+      - name: Apply infrastructure changes
+        run: |
+          cd infrastructure/terraform/environments/staging
+          terraform apply -auto-approve tfplan
+
+  deploy_applications:
+    name: Deploy Applications
+    needs: [setup_infrastructure]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 3.12.0
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.CLUSTER_NAME }}
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+
+      - name: Deploy monitoring stack
+        run: |
+          helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+            --namespace monitoring \
+            --create-namespace \
+            --values infrastructure/helm/monitoring/values-staging.yaml \
+            --set grafana.adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+
+      - name: Deploy application
+        run: |
+          helm upgrade --install tald-unia infrastructure/helm/tald-unia \
+            --namespace staging \
+            --create-namespace \
+            --values infrastructure/helm/tald-unia/values-staging.yaml \
+            --set image.tag=${GITHUB_SHA::8} \
+            --set gpu.enabled=true \
+            --set gpu.instanceType=${{ env.GPU_INSTANCE_TYPE }} \
+            --set mesh.maxNodes=${{ env.MAX_MESH_NODES }}
+
+  validate_deployment:
+    name: Validate Deployment
+    needs: [deploy_applications]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.CLUSTER_NAME }}
+
+      - name: Verify GPU allocation
+        run: |
+          kubectl get nodes -l accelerator=nvidia -o wide
+          kubectl describe nodes -l accelerator=nvidia | grep "nvidia.com/gpu"
+
+      - name: Validate LiDAR performance
+        run: |
+          for i in {1..10}; do
+            SCAN_RATE=$(kubectl exec -n staging deploy/lidar-core -- curl -s http://localhost:9090/metrics | grep lidar_scan_rate | awk '{print $2}')
+            if (( $(echo "$SCAN_RATE < ${{ env.SCAN_RATE_THRESHOLD }}" | bc -l) )); then
+              echo "LiDAR scan rate below threshold: $SCAN_RATE Hz"
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Check mesh network capacity
+        run: |
+          MESH_NODES=$(kubectl exec -n staging deploy/fleet-manager -- curl -s http://localhost:9090/metrics | grep mesh_connected_nodes | awk '{print $2}')
+          if [[ $MESH_NODES -gt ${{ env.MAX_MESH_NODES }} ]]; then
+            echo "Mesh network exceeds maximum capacity: $MESH_NODES nodes"
+            exit 1
+          fi
+
+      - name: Verify network latency
+        run: |
+          LATENCY=$(kubectl exec -n staging deploy/fleet-manager -- curl -s http://localhost:9090/metrics | grep mesh_network_latency | awk '{print $2}')
+          if (( $(echo "$LATENCY > ${{ env.MAX_LATENCY }}" | bc -l) )); then
+            echo "Network latency above threshold: $LATENCY ms"
+            exit 1
+          fi
+
+      - name: Generate validation report
+        if: always()
+        run: |
+          echo "Deployment Validation Report" > validation-report.txt
+          echo "=========================" >> validation-report.txt
+          echo "Date: $(date)" >> validation-report.txt
+          echo "Environment: ${{ env.ENVIRONMENT }}" >> validation-report.txt
+          echo "Commit: ${GITHUB_SHA}" >> validation-report.txt
+          echo "Performance Metrics:" >> validation-report.txt
+          kubectl exec -n staging deploy/lidar-core -- curl -s http://localhost:9090/metrics >> validation-report.txt
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: validation-report
+          path: validation-report.txt
+          retention-days: 7
