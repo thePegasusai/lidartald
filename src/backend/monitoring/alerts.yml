@@ -1,0 +1,162 @@
+# Alert rules configuration for TALD UNIA platform
+# alertmanager v0.25.0
+
+# Global alert routing configuration
+route:
+  group_by: ['severity', 'component']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'warning_alerts'
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical_alerts'
+
+# Alert receivers configuration
+receivers:
+  - name: 'critical_alerts'
+    pagerduty_configs:
+      - service_key: ${PAGERDUTY_SERVICE_KEY}
+        send_resolved: true
+        severity: critical
+        description: '{{ .CommonAnnotations.description }}'
+        client: 'TALD UNIA Monitoring'
+        client_url: '{{ .GeneratorURL }}'
+
+  - name: 'warning_alerts'
+    email_configs:
+      - to: 'alerts@tald-unia.com'
+        from: 'monitoring@tald-unia.com'
+        smarthost: ${SMTP_HOST}:587
+        auth_username: ${SMTP_USER}
+        auth_password: ${SMTP_PASSWORD}
+        send_resolved: true
+
+# Alert rules groups
+groups:
+  # LiDAR Core monitoring
+  - name: lidar_alerts
+    rules:
+      - alert: LowScanRate
+        expr: scan_rate_hz < 25
+        for: 1m
+        labels:
+          severity: critical
+          component: lidar_core
+        annotations:
+          summary: LiDAR scan rate below minimum threshold
+          description: Scan rate has dropped below 25Hz for 1 minute
+          dashboard: ${GRAFANA_URL}/d/lidar-metrics
+          runbook: ${RUNBOOK_URL}/lidar/low-scan-rate
+
+      - alert: HighProcessingTime
+        expr: point_cloud_processing_time_ms > 50
+        for: 2m
+        labels:
+          severity: warning
+          component: lidar_core
+        annotations:
+          summary: Point cloud processing time exceeds threshold
+          description: Processing time above 50ms for 2 minutes
+          dashboard: ${GRAFANA_URL}/d/lidar-metrics
+          runbook: ${RUNBOOK_URL}/lidar/high-processing-time
+
+  # Fleet Manager monitoring
+  - name: fleet_alerts
+    rules:
+      - alert: HighNetworkLatency
+        expr: mesh_network_latency_ms > 50
+        for: 1m
+        labels:
+          severity: critical
+          component: fleet_manager
+        annotations:
+          summary: Mesh network latency exceeds threshold
+          description: Network latency above 50ms for 1 minute
+          dashboard: ${GRAFANA_URL}/d/fleet-metrics
+          runbook: ${RUNBOOK_URL}/fleet/high-latency
+
+      - alert: FleetSyncDelay
+        expr: state_sync_time_ms > 1000
+        for: 2m
+        labels:
+          severity: warning
+          component: fleet_manager
+        annotations:
+          summary: Fleet state synchronization delay
+          description: State sync time above 1 second for 2 minutes
+          dashboard: ${GRAFANA_URL}/d/fleet-metrics
+          runbook: ${RUNBOOK_URL}/fleet/sync-delay
+
+  # Game Engine monitoring
+  - name: game_alerts
+    rules:
+      - alert: LowFrameRate
+        expr: frame_rate_fps < 55
+        for: 1m
+        labels:
+          severity: warning
+          component: game_engine
+        annotations:
+          summary: Game frame rate below threshold
+          description: Frame rate below 55 FPS for 1 minute
+          dashboard: ${GRAFANA_URL}/d/game-metrics
+          runbook: ${RUNBOOK_URL}/game/low-fps
+
+      - alert: HighMemoryUsage
+        expr: memory_usage_bytes > 1000000000
+        for: 5m
+        labels:
+          severity: warning
+          component: game_engine
+        annotations:
+          summary: High memory usage detected
+          description: Memory usage above 1GB for 5 minutes
+          dashboard: ${GRAFANA_URL}/d/game-metrics
+          runbook: ${RUNBOOK_URL}/game/high-memory
+
+  # Security monitoring
+  - name: security_alerts
+    rules:
+      - alert: ExcessiveAuthFailures
+        expr: failed_auth_attempts_total > 10
+        for: 5m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: High number of authentication failures
+          description: More than 10 failed auth attempts in 5 minutes
+          dashboard: ${GRAFANA_URL}/d/security-metrics
+          runbook: ${RUNBOOK_URL}/security/auth-failures
+
+      - alert: AuditLogErrors
+        expr: audit_log_errors_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: Audit log errors detected
+          description: Errors in security audit logging system
+          dashboard: ${GRAFANA_URL}/d/security-metrics
+          runbook: ${RUNBOOK_URL}/security/audit-errors
+
+# Inhibition rules to prevent alert spam
+inhibit_rules:
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['component']
+
+# Time intervals for alert grouping
+time_intervals:
+  - name: business_hours
+    time_intervals:
+      - times:
+          - start_time: '09:00'
+            end_time: '17:00'
+        weekdays: ['monday:friday']
+        location: 'America/New_York'
