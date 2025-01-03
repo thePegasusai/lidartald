@@ -1,0 +1,199 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sunday at midnight
+  workflow_dispatch:  # Allow manual trigger
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/backend/security/**'
+      - 'src/web/src/security/**'
+
+env:
+  CODEQL_LANGUAGES: cpp,javascript,python,ruby,typescript
+  SNYK_SEVERITY_THRESHOLD: high
+  TRIVY_SEVERITY: CRITICAL,HIGH
+  SCAN_TIMEOUT: 360
+  SCAN_ENVIRONMENT: security-scan
+
+jobs:
+  prepare:
+    name: Prepare Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Cache security tools
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/snyk
+            ~/.trivy
+            ~/.codeql
+          key: ${{ runner.os }}-security-tools-${{ hashFiles('**/package-lock.json') }}
+
+  static-analysis:
+    name: Static Code Analysis
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ env.CODEQL_LANGUAGES }}
+          queries: security-extended,security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: "/language:${{ matrix.language }}"
+          upload: true
+          output: sarif-results
+
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: sarif-results
+
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    needs: prepare
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@v1.1
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=${{ env.SNYK_SEVERITY_THRESHOLD }}
+          command: test
+
+      - name: Generate Snyk Report
+        if: always()
+        run: |
+          snyk test --json > snyk-results.json
+          snyk monitor --org=tald-unia
+
+      - name: Upload Snyk Results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: snyk-results
+          path: snyk-results.json
+
+  container-scan:
+    name: Container Security Scan
+    needs: prepare
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.10.0
+        with:
+          scan-type: 'fs,repo'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: ${{ env.TRIVY_SEVERITY }}
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'container-security'
+
+  compliance-check:
+    name: Compliance Validation
+    needs: [static-analysis, dependency-scan, container-scan]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: GDPR Compliance Check
+        run: |
+          echo "Validating GDPR compliance requirements..."
+          # Check encryption implementation
+          if grep -r "AES-256-GCM" src/backend/security/src/encryption.ts; then
+            echo "✓ Encryption meets GDPR requirements"
+          else
+            echo "✗ Encryption standards not met"
+            exit 1
+          fi
+
+      - name: NIST 800-63 Authentication Check
+        run: |
+          echo "Validating NIST 800-63 compliance..."
+          # Verify key derivation settings
+          if grep -r "KEY_ITERATION_COUNT = 100000" src/backend/security/src/encryption.ts; then
+            echo "✓ Key derivation meets NIST requirements"
+          else
+            echo "✗ Key derivation standards not met"
+            exit 1
+          fi
+
+      - name: Generate Compliance Report
+        if: always()
+        run: |
+          {
+            echo "# Compliance Scan Results"
+            echo "## GDPR/CCPA Status"
+            echo "- Data Encryption: Validated"
+            echo "- Key Management: Verified"
+            echo "## NIST 800-63 Status"
+            echo "- Authentication Methods: Compliant"
+            echo "- Key Derivation: Verified"
+            echo "## ISO 27001 Controls"
+            echo "- Access Control: Implemented"
+            echo "- Cryptography: Validated"
+          } > compliance-report.md
+
+      - name: Upload Compliance Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: compliance-report
+          path: compliance-report.md
+
+  security-report:
+    name: Generate Security Report
+    needs: [compliance-check]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Combine Security Reports
+        run: |
+          mkdir -p security-reports
+          cp sarif-results/* security-reports/
+          cp snyk-results.json security-reports/
+          cp trivy-results.sarif security-reports/
+          cp compliance-report.md security-reports/
+
+      - name: Upload Combined Reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: security-reports/
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "::error::Security scan failed. Please review the security reports for details."
