@@ -1,0 +1,66 @@
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_gpu_shader_fp64 : enable  // For double precision support
+
+// Version comments for dependencies
+// Vulkan SDK 1.3.0
+// GLM 0.9.9.8
+// SPIR-V 1.6
+
+// Uniform buffer for high-precision transformations
+layout(binding = 0) uniform UniformBufferObject {
+    dmat4 model;        // Double precision model matrix
+    dmat4 view;         // Double precision view matrix
+    dmat4 proj;         // Double precision projection matrix
+    vec2 resolution;    // Screen resolution for point size calculation
+    float pointSizeScale; // Dynamic point size scaling factor
+} ubo;
+
+// Vertex attributes with high precision for LiDAR data
+layout(location = 0) in dvec3 inPosition;    // Double precision position
+layout(location = 1) in vec3 inNormal;       // Normal vector
+layout(location = 2) in vec4 inColor;        // RGBA color
+layout(location = 3) in float inPointSize;   // Base point size
+
+// Output to fragment shader
+layout(location = 0) out vec4 outColor;      // Interpolated color
+layout(location = 1) out vec3 outNormal;     // Transformed normal
+layout(location = 2) out vec3 outViewPos;    // View space position
+
+// Constants for point size and depth handling
+const float MIN_POINT_SIZE = 1.0f;
+const float MAX_POINT_SIZE = 4.0f;
+const float DEPTH_PRECISION_FACTOR = 100.0f;
+
+void main() {
+    // High-precision position transformation
+    dvec4 worldPos = ubo.model * dvec4(inPosition, 1.0);
+    dvec4 viewPos = ubo.view * worldPos;
+    dvec4 clipPos = ubo.proj * viewPos;
+    
+    // Convert to float for gl_Position while preserving precision
+    gl_Position = vec4(clipPos);
+    
+    // Transform normal with precision preservation
+    mat3 normalMatrix = transpose(inverse(mat3(ubo.model)));
+    outNormal = normalize(normalMatrix * inNormal);
+    
+    // Calculate view space position for depth-based effects
+    outViewPos = vec3(viewPos);
+    
+    // Dynamic point size calculation based on depth
+    float depth = abs(float(viewPos.z));
+    float sizeAttenuation = 1.0 / (1.0 + depth * 0.1);
+    float baseSize = mix(MIN_POINT_SIZE, MAX_POINT_SIZE, inPointSize);
+    gl_PointSize = clamp(
+        baseSize * sizeAttenuation * ubo.pointSizeScale,
+        MIN_POINT_SIZE,
+        MAX_POINT_SIZE
+    );
+    
+    // Pass color to fragment shader
+    outColor = inColor;
+    
+    // Apply depth precision enhancement
+    gl_Position.z = gl_Position.z * DEPTH_PRECISION_FACTOR;
+}
