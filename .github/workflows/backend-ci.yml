@@ -1,0 +1,208 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/backend/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/backend/**'
+
+env:
+  CUDA_VERSION: '12.0'
+  VULKAN_SDK_VERSION: '1.3'
+  RUST_VERSION: '1.70'
+  NODE_VERSION: '18.0'
+  CMAKE_VERSION: '3.26'
+  BUILD_TYPE: Release
+  CARGO_PROFILE: release
+  NODE_ENV: production
+
+jobs:
+  setup:
+    name: Setup Build Environment
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    
+    steps:
+    - name: Set build matrix
+      id: set-matrix
+      run: |
+        echo "matrix={\"component\":[\"lidar_core\",\"game_engine\",\"fleet_manager\",\"social_engine\"]}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: setup
+    name: Build ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{fromJson(needs.setup.outputs.matrix)}}
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential ninja-build ccache
+        sudo apt-get install -y libpcl-dev libeigen3-dev
+
+    - name: Setup CUDA
+      if: matrix.component == 'lidar_core' || matrix.component == 'game_engine'
+      uses: nvidia/cuda-toolkit@12.0
+      with:
+        cuda-version: ${{ env.CUDA_VERSION }}
+
+    - name: Setup Vulkan SDK
+      if: matrix.component == 'game_engine'
+      uses: khronos/vulkan-sdk@v1.3
+      with:
+        version: ${{ env.VULKAN_SDK_VERSION }}
+
+    - name: Setup Rust
+      if: matrix.component == 'fleet_manager'
+      uses: rust-lang/setup-rust-toolchain@v1
+      with:
+        toolchain: ${{ env.RUST_VERSION }}
+        components: clippy, rustfmt
+        
+    - name: Setup Node.js
+      if: matrix.component == 'social_engine'
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.ccache
+          ~/.npm
+          build
+        key: ${{ runner.os }}-${{ matrix.component }}-${{ hashFiles('**/Cargo.lock', '**/package-lock.json', '**/CMakeLists.txt') }}
+
+    - name: Build C++ components
+      if: matrix.component == 'lidar_core' || matrix.component == 'game_engine'
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. -GNinja \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -DENABLE_CUDA=ON \
+          -DENABLE_VULKAN=ON
+        ninja -j$(nproc)
+
+    - name: Build Rust components
+      if: matrix.component == 'fleet_manager'
+      run: |
+        cargo build --release --workspace
+
+    - name: Build Node.js components
+      if: matrix.component == 'social_engine'
+      run: |
+        npm ci
+        npm run build
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.component }}-build
+        path: |
+          build/bin
+          build/lib
+          target/release
+          dist
+        retention-days: 1
+
+  test:
+    needs: build
+    name: Test ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{fromJson(needs.setup.outputs.matrix)}}
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ${{ matrix.component }}-build
+
+    - name: Run C++ tests
+      if: matrix.component == 'lidar_core' || matrix.component == 'game_engine'
+      run: |
+        cd build
+        ctest --output-on-failure --parallel $(nproc)
+
+    - name: Run Rust tests
+      if: matrix.component == 'fleet_manager'
+      run: |
+        cargo test --release --workspace
+
+    - name: Run Node.js tests
+      if: matrix.component == 'social_engine'
+      run: |
+        npm test -- --coverage
+
+    - name: Verify performance requirements
+      run: |
+        ./src/backend/scripts/test.sh
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.component }}-test-results
+        path: |
+          build/Testing
+          target/debug/deps
+          coverage
+        retention-days: 7
+
+  validate:
+    needs: test
+    name: Validate Requirements
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Download test results
+      uses: actions/download-artifact@v3
+
+    - name: Verify scan rate
+      run: |
+        if ! grep -q "30Hz scan rate verified" */test-results.txt; then
+          echo "Error: Failed to meet 30Hz scan rate requirement"
+          exit 1
+        fi
+
+    - name: Verify network latency
+      run: |
+        if ! grep -q "<50ms network latency verified" */test-results.txt; then
+          echo "Error: Failed to meet network latency requirement"
+          exit 1
+        fi
+
+    - name: Generate validation report
+      run: |
+        echo "Backend Validation Report" > validation-report.txt
+        echo "======================" >> validation-report.txt
+        echo "Date: $(date)" >> validation-report.txt
+        echo "" >> validation-report.txt
+        echo "Performance Requirements:" >> validation-report.txt
+        grep -h "Hz\|latency\|memory" */test-results.txt >> validation-report.txt
+
+    - name: Upload validation report
+      uses: actions/upload-artifact@v3
+      with:
+        name: validation-report
+        path: validation-report.txt
+        retention-days: 30
