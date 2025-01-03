@@ -1,0 +1,81 @@
+[package]
+name = "fleet_manager"
+version = "0.1.0"
+edition = "2021"
+description = "Fleet management system for TALD UNIA platform providing mesh networking and device coordination"
+authors = ["TALD UNIA Team"]
+license = "Proprietary"
+
+[dependencies]
+# Async runtime and networking - v1.28
+tokio = { version = "1.28", features = ["full", "tracing"] }
+
+# WebRTC for P2P connections - v0.7
+webrtc = { version = "0.7", features = ["mdns"] }
+
+# Serialization - v1.0
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Concurrent data structures - v5.4
+dashmap = "5.4"
+
+# Unique identifiers - v1.3
+uuid = { version = "1.3", features = ["v4", "serde"] }
+
+# Logging and instrumentation - v0.1
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling - v1.0
+thiserror = "1.0"
+
+# mDNS support - v2.0
+mdns = "2.0"
+
+# Metrics and monitoring
+metrics = "0.20"
+metrics-exporter-prometheus = "0.11"
+
+# Cryptography for secure communication
+ring = "0.16"
+
+# CRDT for distributed state
+automerge = "0.4"
+
+[dev-dependencies]
+# Testing frameworks
+tokio-test = "0.4"
+mockall = "0.11"
+test-log = "0.2"
+async-trait = "0.1"
+
+[build-dependencies]
+cmake = "0.1"
+
+[features]
+default = ["full"]
+full = ["discovery", "mesh", "session", "sync"]
+discovery = []
+mesh = ["discovery"]
+session = ["mesh"]
+sync = ["session"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "unwind"
+debug = true  # Keep debug symbols for production tracing
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[[bench]]
+name = "mesh_performance"
+harness = false
