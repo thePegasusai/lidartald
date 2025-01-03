@@ -1,0 +1,26 @@
+[toolchain]
+# Rust version 1.70 as specified in technical spec section 4.1
+channel = "1.70.0"
+
+# Required components for development
+components = [
+    "rustfmt",     # Code formatting
+    "clippy",      # Linting
+    "rust-src",    # Source code for standard library
+    "rust-analyzer" # IDE support
+]
+
+# Target platform for Fleet Manager component
+targets = [
+    "x86_64-unknown-linux-gnu"
+]
+
+# Profile configurations for build optimization
+[profile.dev]
+debug = true
+opt-level = 2  # Balance between compile time and runtime performance
+
+[profile.release]
+debug = false
+opt-level = 3  # Maximum optimization
+lto = true     # Link-time optimization for better runtime performance
