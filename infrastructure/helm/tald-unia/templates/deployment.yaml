@@ -1,0 +1,178 @@
+{{/* Common labels template */}}
+{{- define "tald-unia.labels" -}}
+app.kubernetes.io/name: {{ .name }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/part-of: tald-unia
+helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+{{- end }}
+
+{{/* Common deployment template */}}
+{{- define "tald-unia.deployment" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "tald-unia.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .name }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "tald-unia.labels" . | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+      containers:
+        - name: {{ .name }}
+          image: "{{ .Values.global.imageRegistry }}/{{ .values.image.repository }}:{{ .values.image.tag | default .Values.global.imageTag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            {{- toYaml .values.resources | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          {{- if .values.configMap }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
+          {{- end }}
+      {{- if .values.configMap }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .name }}-config
+      {{- end }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ .name }}
+{{- end }}
+
+---
+{{/* LiDAR Core Deployment */}}
+{{- $lidarCore := dict "name" "lidar-core" "values" .Values.lidarCore "Release" .Release "Chart" .Chart }}
+{{- if .Values.lidarCore.enabled | default true }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lidar-core
+  labels:
+    {{- include "tald-unia.labels" $lidarCore | nindent 4 }}
+spec:
+  {{- include "tald-unia.deployment" $lidarCore | nindent 2 }}
+  template:
+    spec:
+      nodeSelector:
+        nvidia.com/gpu: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+{{- end }}
+
+---
+{{/* Fleet Manager Deployment */}}
+{{- $fleetManager := dict "name" "fleet-manager" "values" .Values.fleetManager "Release" .Release "Chart" .Chart }}
+{{- if .Values.fleetManager.enabled | default true }}
+{{- include "tald-unia.deployment" $fleetManager }}
+{{- end }}
+
+---
+{{/* Game Engine Deployment */}}
+{{- $gameEngine := dict "name" "game-engine" "values" .Values.gameEngine "Release" .Release "Chart" .Chart }}
+{{- if .Values.gameEngine.enabled | default true }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: game-engine
+  labels:
+    {{- include "tald-unia.labels" $gameEngine | nindent 4 }}
+spec:
+  {{- include "tald-unia.deployment" $gameEngine | nindent 2 }}
+  template:
+    spec:
+      nodeSelector:
+        nvidia.com/gpu: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+{{- end }}
+
+---
+{{/* Social Engine Deployment */}}
+{{- $socialEngine := dict "name" "social-engine" "values" .Values.socialEngine "Release" .Release "Chart" .Chart }}
+{{- if .Values.socialEngine.enabled | default true }}
+{{- include "tald-unia.deployment" $socialEngine }}
+{{- end }}
+
+---
+{{/* Autoscaling configurations */}}
+{{- range $component := list "lidarCore" "fleetManager" "gameEngine" "socialEngine" }}
+{{- if (index $.Values $component).autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $component | kebabcase }}
+  labels:
+    {{- include "tald-unia.labels" (dict "name" ($component | kebabcase) "Release" $.Release "Chart" $.Chart) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $component | kebabcase }}
+  minReplicas: {{ (index $.Values $component).autoscaling.minReplicas }}
+  maxReplicas: {{ (index $.Values $component).autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ (index $.Values $component).autoscaling.targetCPUUtilization }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ (index $.Values $component).autoscaling.targetMemoryUtilization }}
+{{- end }}
+{{- end }}
