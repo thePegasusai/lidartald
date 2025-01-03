@@ -1,0 +1,215 @@
+/* Import normalize.css v8.0.1 for consistent cross-browser styling */
+@import 'normalize.css';
+
+/* Import Roboto font v5.0.0 for Material Design */
+@import '@fontsource/roboto';
+
+/* Root variables from theme configuration */
+:root {
+  /* Primary colors */
+  --primary-main: #1976d2;
+  --primary-light: #42a5f5;
+  --primary-dark: #1565c0;
+  
+  /* Secondary colors */
+  --secondary-main: #9c27b0;
+  --secondary-light: #ba68c8;
+  --secondary-dark: #7b1fa2;
+  
+  /* LiDAR specific colors */
+  --lidar-point: #00ff00;
+  --lidar-surface: #4caf50;
+  --lidar-feature: #ff9800;
+  --lidar-highlight: #ff4081;
+  --lidar-background: #000000;
+  --lidar-grid: #424242;
+  
+  /* Material Design elevation values */
+  --elevation-1: 0 2px 1px -1px rgba(0,0,0,0.2), 0 1px 1px 0 rgba(0,0,0,0.14), 0 1px 3px 0 rgba(0,0,0,0.12);
+  --elevation-2: 0 3px 1px -2px rgba(0,0,0,0.2), 0 2px 2px 0 rgba(0,0,0,0.14), 0 1px 5px 0 rgba(0,0,0,0.12);
+  --elevation-3: 0 3px 3px -2px rgba(0,0,0,0.2), 0 3px 4px 0 rgba(0,0,0,0.14), 0 1px 8px 0 rgba(0,0,0,0.12);
+  --elevation-4: 0 2px 4px -1px rgba(0,0,0,0.2), 0 4px 5px 0 rgba(0,0,0,0.14), 0 1px 10px 0 rgba(0,0,0,0.12);
+  --elevation-5: 0 3px 5px -1px rgba(0,0,0,0.2), 0 5px 8px 0 rgba(0,0,0,0.14), 0 1px 14px 0 rgba(0,0,0,0.12);
+}
+
+/* Global reset and base styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+  color-scheme: light dark;
+}
+
+body {
+  font-family: 'Roboto', system-ui, sans-serif;
+  background-color: var(--lidar-background);
+  color: #ffffff;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* GPU acceleration for animations */
+.gpu-accelerated {
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+}
+
+/* LiDAR viewport base styles */
+.lidar-viewport {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--lidar-background);
+  contain: layout paint size;
+}
+
+.lidar-viewport canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* Fleet container styles */
+.fleet-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  padding: 16px;
+  contain: layout style;
+  overscroll-behavior: contain;
+}
+
+/* Social radar styles */
+.social-radar {
+  position: relative;
+  border-radius: 50%;
+  aspect-ratio: 1;
+  transform-origin: center;
+  transition: transform 8.33ms linear;
+  background: radial-gradient(circle, rgba(76,175,80,0.2) 0%, rgba(76,175,80,0) 70%);
+}
+
+/* Utility classes */
+.flex { display: flex; }
+.grid { display: grid; }
+.block { display: block; }
+.none { display: none; }
+
+/* Margin utilities */
+.m-0 { margin: 0; }
+.m-1 { margin: 8px; }
+.m-2 { margin: 16px; }
+.m-3 { margin: 24px; }
+.m-4 { margin: 32px; }
+.m-5 { margin: 40px; }
+
+/* Padding utilities */
+.p-0 { padding: 0; }
+.p-1 { padding: 8px; }
+.p-2 { padding: 16px; }
+.p-3 { padding: 24px; }
+.p-4 { padding: 32px; }
+.p-5 { padding: 40px; }
+
+/* Elevation utilities */
+.elevation-0 { box-shadow: none; }
+.elevation-1 { box-shadow: var(--elevation-1); }
+.elevation-2 { box-shadow: var(--elevation-2); }
+.elevation-3 { box-shadow: var(--elevation-3); }
+.elevation-4 { box-shadow: var(--elevation-4); }
+.elevation-5 { box-shadow: var(--elevation-5); }
+
+/* Media queries for responsive design */
+@media (max-width: 600px) {
+  html {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  
+  body {
+    touch-action: manipulation;
+    user-select: none;
+  }
+  
+  .fleet-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 601px) and (max-width: 960px) {
+  html {
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  
+  body {
+    touch-action: pan-x pan-y;
+  }
+}
+
+@media (min-width: 961px) {
+  html {
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  
+  body {
+    cursor: default;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  :root {
+    color-scheme: high-contrast;
+  }
+  
+  body {
+    background: white;
+    color: black;
+  }
+  
+  .elevation-1, .elevation-2, .elevation-3, .elevation-4, .elevation-5 {
+    box-shadow: none;
+  }
+  
+  * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* High refresh rate optimizations */
+@media (update: fast) {
+  * {
+    transition-duration: 8.33ms;
+    animation-duration: 8.33ms;
+  }
+}
