@@ -1,0 +1,98 @@
+{{/* Ingress template for TALD UNIA platform */}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-ingress
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.annotations.kubernetes.io/ingress.class }}
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.annotations.cert-manager.io/cluster-issuer }}
+    # Security configurations
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "8m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Real IP configuration
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      real_ip_header X-Forwarded-For;
+      real_ip_recursive on;
+    # CORS configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    # WAF configuration
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+    # Load balancing strategy
+    nginx.ingress.kubernetes.io/load-balance: "ewma"
+  labels:
+    app.kubernetes.io/name: tald-unia
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/part-of: tald-unia-platform
+spec:
+  tls:
+    - hosts:
+        {{- range .Values.ingress.hosts }}
+        - {{ . }}
+        {{- end }}
+      secretName: {{ .Release.Name }}-tls
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ . }}
+      http:
+        paths:
+          # LiDAR Core API endpoints
+          - path: /api/v1/lidar
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Release.Name }}-lidar-core
+                port:
+                  number: 8080
+          # Game Engine API endpoints
+          - path: /api/v1/game
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Release.Name }}-game-engine
+                port:
+                  number: 9000
+          # Fleet Manager API endpoints
+          - path: /api/v1/fleet
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Release.Name }}-fleet-manager
+                port:
+                  number: 7000
+          # Social Engine API endpoints
+          - path: /api/v1/social
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Release.Name }}-social-engine
+                port:
+                  number: 6000
+          # WebSocket endpoints for real-time communication
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Release.Name }}-social-engine
+                port:
+                  number: 6001
+          # Health check endpoint
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $.Release.Name }}-health-check
+                port:
+                  number: 8081
+    {{- end }}
