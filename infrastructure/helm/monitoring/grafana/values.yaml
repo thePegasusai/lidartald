@@ -1,0 +1,189 @@
+# Grafana Helm Values Configuration v9.5.2
+# TALD UNIA Platform Monitoring
+
+grafana:
+  image:
+    repository: grafana/grafana
+    tag: "9.5.2"
+    pullPolicy: IfNotPresent
+
+  persistence:
+    enabled: true
+    type: pvc
+    size: 10Gi
+    storageClassName: gp2
+    accessModes:
+      - ReadWriteOnce
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  serviceAccount:
+    create: true
+    annotations:
+      eks.amazonaws.com/role-arn: "${AWS_ROLE_ARN}"
+
+  securityContext:
+    runAsUser: 472
+    runAsGroup: 472
+    fsGroup: 472
+
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://prometheus-server:9090
+          access: proxy
+          isDefault: true
+          version: 1
+          editable: true
+          jsonData:
+            timeInterval: "5s"
+            queryTimeout: "30s"
+            httpMethod: POST
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: TALD-UNIA
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards
+            foldersFromFilesStructure: true
+
+  dashboards:
+    default:
+      lidar-metrics:
+        file: lidar-metrics.json
+        datasource: Prometheus
+      fleet-metrics:
+        file: fleet-metrics.json
+        datasource: Prometheus
+
+  alerting:
+    enabled: true
+    alertmanagers:
+      - name: alertmanager
+        orgId: 1
+        type: prometheus-alertmanager
+        uid: alertmanager
+        url: http://alertmanager:9093
+        access: proxy
+        basicAuth: false
+
+  auth:
+    oauth:
+      enabled: true
+      clientId: "${OAUTH_CLIENT_ID}"
+      clientSecret: "${OAUTH_CLIENT_SECRET}"
+      scopes:
+        - openid
+        - profile
+        - email
+      authUrl: "${OAUTH_AUTH_URL}"
+      tokenUrl: "${OAUTH_TOKEN_URL}"
+      apiUrl: "${OAUTH_API_URL}"
+      allowedDomains: ["tald-unia.com"]
+      allowSignup: false
+
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - grafana.tald-unia.com
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.tald-unia.com
+
+  env:
+    GF_SERVER_ROOT_URL: https://grafana.tald-unia.com
+    GF_SECURITY_ALLOW_EMBEDDING: "true"
+    GF_AUTH_ANONYMOUS_ENABLED: "false"
+    GF_FEATURE_TOGGLES_ENABLE: publicDashboards
+    GF_UNIFIED_ALERTING_ENABLED: "true"
+
+  envFromSecret: grafana-secrets
+
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: true
+      searchNamespace: ALL
+
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 10s
+    labels:
+      release: prometheus
+
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+
+  extraConfigmapMounts:
+    - name: grafana-dashboards
+      mountPath: /var/lib/grafana/dashboards
+      configMap: grafana-dashboards
+      readOnly: true
+
+  smtp:
+    enabled: true
+    host: "${SMTP_HOST}"
+    user: "${SMTP_USER}"
+    password: "${SMTP_PASSWORD}"
+    fromAddress: monitoring@tald-unia.com
+    fromName: "TALD UNIA Monitoring"
+
+  plugins:
+    - grafana-piechart-panel
+    - grafana-worldmap-panel
+    - grafana-clock-panel
+    - grafana-polystat-panel
+
+  grafana.ini:
+    server:
+      domain: grafana.tald-unia.com
+      root_url: https://grafana.tald-unia.com
+    security:
+      allow_embedding: true
+      cookie_secure: true
+      cookie_samesite: strict
+    auth:
+      disable_login_form: false
+      oauth_auto_login: false
+    dashboards:
+      min_refresh_interval: 5s
+    users:
+      allow_sign_up: false
+      auto_assign_org_role: Viewer
+    alerting:
+      enabled: true
+      execute_alerts: true
+      error_or_timeout: alerting
+      nodata_or_nullvalues: alerting
+    unified_alerting:
+      enabled: true
+    metrics:
+      enabled: true
+      interval_seconds: 10
