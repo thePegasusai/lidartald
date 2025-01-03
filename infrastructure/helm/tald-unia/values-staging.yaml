@@ -1,0 +1,140 @@
+# Staging environment configuration overrides for TALD UNIA platform
+# Version: 1.0.0
+
+# Global configuration values
+global:
+  imageRegistry: tald-unia-staging
+  imageTag: staging
+  imagePullPolicy: IfNotPresent
+  environment: staging
+  monitoring:
+    enabled: true
+    scrapeInterval: 15s
+  security:
+    tls:
+      enabled: true
+      provider: cert-manager
+    rbac:
+      enabled: true
+
+# LiDAR Core configuration
+lidarCore:
+  replicaCount: 2
+  image:
+    repository: lidar-core
+    tag: staging
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+      nvidia.com/gpu: "1"
+    limits:
+      cpu: "2"
+      memory: 4Gi
+      nvidia.com/gpu: "1"
+  scanRate: 30
+  resolution: 0.01
+  range: 5.0
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilization: 75
+    targetMemoryUtilization: 80
+
+# Fleet Manager configuration
+fleetManager:
+  replicaCount: 2
+  image:
+    repository: fleet-manager
+    tag: staging
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  meshNetwork:
+    maxDevices: 32
+    discoveryInterval: "10s"
+
+# Game Engine configuration
+gameEngine:
+  replicaCount: 2
+  image:
+    repository: game-engine
+    tag: staging
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+      nvidia.com/gpu: "1"
+    limits:
+      cpu: "2"
+      memory: 4Gi
+      nvidia.com/gpu: "1"
+  vulkan:
+    enabled: true
+    version: "1.3"
+
+# Social Engine configuration
+socialEngine:
+  replicaCount: 2
+  image:
+    repository: social-engine
+    tag: staging
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  websocket:
+    enabled: true
+    maxConnections: 2000
+
+# Redis configuration
+redis:
+  architecture: replication
+  auth:
+    enabled: true
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 10Gi
+
+# Monitoring configuration
+monitoring:
+  prometheus:
+    enabled: true
+    retention: 15d
+    scrapeInterval: 15s
+  grafana:
+    enabled: true
+    persistence:
+      enabled: true
+      size: 5Gi
+  elasticsearch:
+    enabled: true
+    replicas: 2
+    persistence:
+      enabled: true
+      size: 20Gi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  tls:
+    enabled: true
+  hosts:
+    - staging.tald-unia.com
