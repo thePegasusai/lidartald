@@ -1,0 +1,208 @@
+# Kibana Helm values configuration for TALD UNIA platform
+# Version: elastic/kibana 8.8.0
+
+# Core Kibana configuration
+kibana:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: gp2
+  
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - kibana.tald-unia.local
+
+# Elasticsearch connection settings
+elasticsearch:
+  host: elasticsearch-master
+  port: 9200
+  protocol: https
+  auth:
+    enabled: true
+    secretName: es-credentials
+  tls:
+    enabled: true
+    certificateSecret: es-cert
+    verificationMode: full
+
+# Security settings
+security:
+  authentication:
+    enabled: true
+    provider: basic
+    secretName: kibana-credentials
+    sessionTimeout: 3600
+  
+  networkPolicy:
+    enabled: true
+    ingressNSMatchLabels:
+      kubernetes.io/metadata.name: monitoring
+    podMatchLabels:
+      app.kubernetes.io/name: kibana
+  
+  encryption:
+    encryptionKey:
+      secretName: kibana-encryption-key
+
+# Default dashboard configurations
+dashboards:
+  lidarMetrics:
+    title: LiDAR Core Metrics
+    index: lidar.core.*
+    refreshInterval: 30s
+    panels:
+      - title: Point Cloud Processing
+        metrics:
+          - scan_resolution
+          - processing_time
+          - point_count
+        type: gauge
+      - title: Feature Detection
+        metrics:
+          - feature_count
+          - detection_accuracy
+          - processing_latency
+        type: line
+      - title: Surface Classification
+        metrics:
+          - surface_types
+          - classification_confidence
+          - update_frequency
+        type: bar
+
+  fleetMetrics:
+    title: Fleet Manager Metrics
+    index: fleet.manager.*
+    refreshInterval: 30s
+    panels:
+      - title: Device Connectivity
+        metrics:
+          - connected_devices
+          - connection_latency
+          - signal_strength
+        type: metric
+      - title: Mesh Network Status
+        metrics:
+          - mesh_stability
+          - network_topology
+          - sync_status
+        type: graph
+      - title: Sync Performance
+        metrics:
+          - sync_latency
+          - data_throughput
+          - error_rate
+        type: line
+
+  gameMetrics:
+    title: Game Engine Metrics
+    index: game.engine.*
+    refreshInterval: 30s
+    panels:
+      - title: Session Performance
+        metrics:
+          - fps
+          - render_time
+          - memory_usage
+        type: gauge
+      - title: Player Activity
+        metrics:
+          - active_players
+          - session_duration
+          - interaction_rate
+        type: area
+      - title: Environment Updates
+        metrics:
+          - update_frequency
+          - map_changes
+          - object_count
+        type: bar
+
+# Visualization templates
+visualizations:
+  - name: lidar_metrics
+    type: visualization
+    index_pattern: lidar.core.*
+    visualization_type: metrics
+    metrics:
+      - scan_resolution
+      - feature_count
+      - processing_time
+  
+  - name: fleet_metrics
+    type: visualization
+    index_pattern: fleet.manager.*
+    visualization_type: metrics
+    metrics:
+      - device_count
+      - sync_latency
+      - mesh_stability
+  
+  - name: game_metrics
+    type: visualization
+    index_pattern: game.engine.*
+    visualization_type: metrics
+    metrics:
+      - player_count
+      - session_duration
+      - environment_updates
+
+# Health checks
+readinessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+  httpGet:
+    path: /api/status
+    port: 5601
+    scheme: HTTPS
+
+livenessProbe:
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  httpGet:
+    path: /api/status
+    port: 5601
+    scheme: HTTPS
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 5601
+
+# Pod configuration
+podManagementPolicy: Parallel
+updateStrategy:
+  type: RollingUpdate
+
+# Anti-affinity configuration
+antiAffinity:
+  type: soft
+  topologyKey: kubernetes.io/hostname
+
+# Node affinity
+nodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: kibana
+            operator: In
+            values:
+              - enabled
