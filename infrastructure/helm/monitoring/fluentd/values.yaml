@@ -1,0 +1,177 @@
+# Fluentd Helm values configuration for TALD UNIA platform
+# Version: fluent/fluentd 4.1.0
+
+# Core Fluentd configuration
+fluentd:
+  replicas: 3
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+  persistence:
+    enabled: true
+    size: "20Gi"
+    storageClass: "gp2"
+
+# Input configurations for log collection
+input:
+  lidarCore:
+    tag: "lidar.core"
+    path: "/var/log/lidar/*.log"
+    format: "json"
+    timeKey: "@timestamp"
+    positionFile: "/var/log/fluentd/lidar.pos"
+    readFromHead: true
+  
+  fleetManager:
+    tag: "fleet.manager"
+    path: "/var/log/fleet/*.log"
+    format: "json"
+    timeKey: "@timestamp"
+    positionFile: "/var/log/fluentd/fleet.pos"
+    readFromHead: true
+  
+  gameEngine:
+    tag: "game.engine"
+    path: "/var/log/game/*.log"
+    format: "json"
+    timeKey: "@timestamp"
+    positionFile: "/var/log/fluentd/game.pos"
+    readFromHead: true
+
+# Log processing filters
+filter:
+  recordTransformer:
+    enabled: true
+    addFields:
+      cluster_name: "tald-unia"
+      environment: "${ENV:-production}"
+  
+  parser:
+    enabled: true
+    keyName: "log"
+    format: "json"
+    reserveData: true
+    removeKeyNameField: true
+    hashValueField: "message"
+
+# Output configuration for Elasticsearch
+output:
+  elasticsearch:
+    host: "elasticsearch-master"
+    port: 9200
+    logstashFormat: true
+    logstashPrefix: "tald-unia"
+    bufferChunkLimit: "2M"
+    bufferQueueLimit: "8"
+    flushInterval: "5s"
+    retryWait: "30s"
+    reconnectOnError: true
+    reloadOnFailure: true
+    reloadConnections: true
+    tls:
+      enabled: true
+      certificateSecret: "es-cert"
+    auth:
+      enabled: true
+      secretName: "es-credentials"
+
+# Monitoring configuration
+monitoring:
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: "30s"
+      labels:
+        release: prometheus
+  
+  healthCheck:
+    enabled: true
+    port: 9880
+
+# Pod configuration
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "24231"
+
+# Service configuration
+service:
+  type: ClusterIP
+  ports:
+    - name: "forward"
+      port: 24224
+      protocol: TCP
+    - name: "metrics"
+      port: 24231
+      protocol: TCP
+
+# Security configuration
+securityContext:
+  runAsUser: 100
+  fsGroup: 100
+
+# Affinity and anti-affinity rules
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - fluentd
+          topologyKey: kubernetes.io/hostname
+
+# Tolerations for node scheduling
+tolerations:
+  - key: "monitoring"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+# Volume mounts for log collection
+volumeMounts:
+  - name: varlog
+    mountPath: /var/log
+  - name: fluentd-config
+    mountPath: /fluentd/etc
+  - name: positions
+    mountPath: /var/log/fluentd
+
+# Volumes configuration
+volumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+  - name: fluentd-config
+    configMap:
+      name: fluentd-config
+  - name: positions
+    persistentVolumeClaim:
+      claimName: fluentd-positions
+
+# Readiness probe
+readinessProbe:
+  httpGet:
+    path: /metrics
+    port: 24231
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+# Liveness probe
+livenessProbe:
+  httpGet:
+    path: /metrics
+    port: 24231
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
