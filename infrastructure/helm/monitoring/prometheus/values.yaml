@@ -1,0 +1,192 @@
+# Prometheus Helm Values Configuration for TALD UNIA Platform
+# Version: 2.45.0
+
+prometheus:
+  # Global configuration
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+    scrape_timeout: 10s
+    external_labels:
+      environment: "${ENV}"
+      region: "${REGION}"
+      app: "tald-unia"
+
+  # Persistence configuration
+  persistentVolume:
+    enabled: true
+    size: 50Gi
+    storageClass: gp2
+    accessModes:
+      - ReadWriteOnce
+    annotations:
+      backup.velero.io/backup-volumes: prometheus-data
+
+  # Resource allocation
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9090"
+
+  # Service monitors for auto-discovery
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    selector:
+      matchLabels:
+        app: tald-unia
+    endpoints:
+      - port: metrics
+        interval: 15s
+        path: /metrics
+
+  # Security context
+  securityContext:
+    runAsUser: 65534
+    runAsNonRoot: true
+    fsGroup: 65534
+
+  # Configuration for core components monitoring
+  additionalScrapeConfigs:
+    - job_name: lidar_core
+      metrics_path: /metrics
+      scrape_interval: 5s
+      static_configs:
+        - targets: ['lidar-core:9090']
+          labels:
+            component: lidar_core
+
+    - job_name: fleet_manager
+      metrics_path: /metrics
+      scrape_interval: 5s
+      static_configs:
+        - targets: ['fleet-manager:9090']
+          labels:
+            component: fleet_manager
+
+    - job_name: game_engine
+      metrics_path: /metrics
+      scrape_interval: 5s
+      static_configs:
+        - targets: ['game-engine:9090']
+          labels:
+            component: game_engine
+
+# Alertmanager configuration
+alertmanager:
+  enabled: true
+  version: 0.25.0
+  
+  # Persistence for alert history
+  persistentVolume:
+    enabled: true
+    size: 10Gi
+    storageClass: gp2
+
+  # Resource allocation
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+
+  # Alert routing configuration
+  config:
+    global:
+      resolve_timeout: 5m
+      slack_api_url: "${SLACK_API_URL}"
+      pagerduty_url: "${PAGERDUTY_URL}"
+
+    route:
+      group_by: ['severity', 'component']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: warning_alerts
+      routes:
+        - match:
+            severity: critical
+          receiver: critical_alerts
+
+    receivers:
+      - name: critical_alerts
+        pagerduty_configs:
+          - service_key: "${PAGERDUTY_KEY}"
+            severity: critical
+            description: "{{ .CommonAnnotations.description }}"
+            client: "TALD UNIA Monitoring"
+            client_url: "{{ .GeneratorURL }}"
+
+      - name: warning_alerts
+        email_configs:
+          - to: "${ALERT_EMAIL}"
+            from: "monitoring@tald-unia.com"
+            smarthost: "${SMTP_HOST}:587"
+            auth_username: "${SMTP_USER}"
+            auth_password: "${SMTP_PASSWORD}"
+            send_resolved: true
+
+# RBAC Configuration
+rbac:
+  create: true
+  pspEnabled: true
+  rules:
+    - apiGroups: [""]
+      resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["extensions"]
+      resources: ["ingresses"]
+      verbs: ["get", "list", "watch"]
+
+# Network Policies
+networkPolicy:
+  enabled: true
+  ingressNSMatchLabels:
+    kubernetes.io/metadata.name: monitoring
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: grafana
+        - podSelector:
+            matchLabels:
+              app: alertmanager
+
+# Storage retention configuration
+retention:
+  enabled: true
+  time: 30d
+  size: 50GB
+
+# TLS Configuration
+tls:
+  enabled: true
+  certFile: /etc/prometheus/certs/prometheus.crt
+  keyFile: /etc/prometheus/certs/prometheus.key
+  caFile: /etc/prometheus/certs/ca.crt
+  insecureSkipVerify: false
+
+# Remote write configuration for long-term storage
+remoteWrite:
+  - url: "http://remote-storage:9090/api/v1/write"
+    queue_config:
+      capacity: 10000
+      max_shards: 50
+      max_samples_per_send: 1000
+      batch_send_deadline: 5s
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: '^(scan_rate_hz|mesh_network_latency_ms|frame_rate_fps|failed_auth_attempts_total).*'
+        action: keep
