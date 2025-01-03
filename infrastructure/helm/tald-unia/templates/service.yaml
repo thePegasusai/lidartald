@@ -1,0 +1,142 @@
+{{/* Service templates for TALD UNIA platform components */}}
+
+{{/* LiDAR Core Service */}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-lidar-core
+  labels:
+    app.kubernetes.io/name: lidar-core
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/component: processing
+    app.kubernetes.io/part-of: tald-unia
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+    security.tald-unia.com/scan-rate: "{{ .Values.lidarCore.scanRate }}"
+    security.tald-unia.com/resolution: "{{ .Values.lidarCore.resolution }}"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: lidar-core
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+{{/* Game Engine Service */}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-game-engine
+  labels:
+    app.kubernetes.io/name: game-engine
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/component: rendering
+    app.kubernetes.io/part-of: tald-unia
+    vulkan.enabled: "{{ .Values.gameEngine.vulkan.enabled }}"
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9000"
+    prometheus.io/path: "/metrics"
+    vulkan.tald-unia.com/version: "{{ .Values.gameEngine.vulkan.version }}"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9000
+      targetPort: 9000
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: game-engine
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+{{/* Fleet Manager Service */}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-fleet-manager
+  labels:
+    app.kubernetes.io/name: fleet-manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/component: networking
+    app.kubernetes.io/part-of: tald-unia
+    mesh.enabled: "true"
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "7000"
+    prometheus.io/path: "/metrics"
+    mesh.tald-unia.com/max-devices: "{{ .Values.fleetManager.meshNetwork.maxDevices }}"
+    mesh.tald-unia.com/discovery-interval: "{{ .Values.fleetManager.meshNetwork.discoveryInterval }}"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7000
+      targetPort: 7000
+      protocol: TCP
+      name: http
+    - port: 7001
+      targetPort: 7001
+      protocol: UDP
+      name: mesh
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: fleet-manager
+    app.kubernetes.io/instance: {{ .Release.Name }}
+
+{{/* Social Engine Service */}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-social-engine
+  labels:
+    app.kubernetes.io/name: social-engine
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    app.kubernetes.io/component: social
+    app.kubernetes.io/part-of: tald-unia
+    websocket.enabled: "{{ .Values.socialEngine.websocket.enabled }}"
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "6000"
+    prometheus.io/path: "/metrics"
+    websocket.tald-unia.com/max-connections: "{{ .Values.socialEngine.websocket.maxConnections }}"
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6000
+      targetPort: 6000
+      protocol: TCP
+      name: http
+    - port: 6001
+      targetPort: 6001
+      protocol: TCP
+      name: websocket
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: social-engine
+    app.kubernetes.io/instance: {{ .Release.Name }}
