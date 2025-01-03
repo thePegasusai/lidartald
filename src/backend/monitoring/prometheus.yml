@@ -1,0 +1,143 @@
+# Prometheus Configuration v2.45.0
+# Enhanced monitoring configuration for TALD UNIA platform
+# Implements comprehensive metrics collection with security and performance monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    environment: production
+    region: global
+
+# Alert rules configuration file
+rule_files:
+  - "alerts.yml"
+
+# Alertmanager configuration v0.25.0
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+      scheme: http
+      timeout: 5s
+      api_version: v2
+
+# Scrape configurations for all monitored services
+scrape_configs:
+  # LiDAR Core Monitoring
+  - job_name: lidar_core
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 5s
+    static_configs:
+      - targets: 
+          - "lidar-core:9090"
+        labels:
+          component: lidar_core
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'scan_rate_hz|point_cloud_processing_time_ms|feature_detection_accuracy_percent|gpu_utilization_percent'
+        action: keep
+
+  # Fleet Manager Monitoring
+  - job_name: fleet_manager
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+          - "fleet-manager:9090"
+        labels:
+          component: fleet_manager
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'connected_devices_count|mesh_network_latency_ms|state_sync_time_ms|p2p_connection_success_rate'
+        action: keep
+
+  # Game Engine Monitoring
+  - job_name: game_engine
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+          - "game-engine:9090"
+        labels:
+          component: game_engine
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'frame_rate_fps|memory_usage_bytes|render_time_ms|physics_update_time_ms'
+        action: keep
+
+  # Security Monitoring
+  - job_name: security
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - "security:9090"
+        labels:
+          component: security
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'failed_auth_attempts_total|audit_log_errors_total|active_sessions_count|token_validation_time_ms'
+        action: keep
+
+  # Node Exporter for Hardware Metrics
+  - job_name: node
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - "node-exporter:9100"
+        labels:
+          component: hardware
+
+  # Service Discovery for Dynamic Targets
+  - job_name: service_discovery
+    metrics_path: /metrics
+    scheme: http
+    scrape_interval: 15s
+    consul_sd_configs:
+      - server: "consul:8500"
+        services: ['tald-unia']
+    relabel_configs:
+      - source_labels: [__meta_consul_service]
+        target_label: service
+      - source_labels: [__meta_consul_node]
+        target_label: instance
+
+# TLS Configuration for Secure Metrics Collection
+tls_config:
+  cert_file: /etc/prometheus/certs/prometheus.crt
+  key_file: /etc/prometheus/certs/prometheus.key
+  ca_file: /etc/prometheus/certs/ca.crt
+  insecure_skip_verify: false
+
+# Storage Configuration
+storage:
+  tsdb:
+    path: /prometheus
+    retention:
+      time: 30d
+      size: 100GB
+    wal:
+      retention:
+        time: 12h
+
+# Remote Write Configuration for Long-term Storage
+remote_write:
+  - url: "http://remote-storage:9090/api/v1/write"
+    queue_config:
+      capacity: 10000
+      max_shards: 50
+      max_samples_per_send: 1000
+      batch_send_deadline: 5s
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: '^(scan_rate_hz|mesh_network_latency_ms|frame_rate_fps|failed_auth_attempts_total).*'
+        action: keep
