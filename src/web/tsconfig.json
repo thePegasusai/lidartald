@@ -1,0 +1,73 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@components/*": ["src/components/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@utils/*": ["src/utils/*"],
+      "@store/*": ["src/store/*"],
+      "@api/*": ["src/api/*"],
+      "@types/*": ["src/types/*"],
+      "@assets/*": ["src/assets/*"],
+      "@styles/*": ["src/styles/*"],
+      "@config/*": ["src/config/*"],
+      "@lidar/*": ["src/features/lidar/*"],
+      "@fleet/*": ["src/features/fleet/*"],
+      "@game/*": ["src/features/game/*"],
+      "@social/*": ["src/features/social/*"],
+      "@environment/*": ["src/features/environment/*"]
+    },
+    "types": [
+      "vite/client",
+      "jest",
+      "node",
+      "three",
+      "webrtc",
+      "websocket",
+      "@types/point-cloud-library"
+    ],
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types",
+      "./src/features/lidar/types",
+      "./src/features/fleet/types"
+    ]
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "cypress/**/*.ts",
+    "jest.config.ts",
+    "vite.config.ts",
+    "src/features/**/*.ts",
+    "src/features/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "build",
+    "dist",
+    "coverage",
+    "cypress/videos",
+    "cypress/screenshots",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/*.cy.ts"
+  ]
+}
