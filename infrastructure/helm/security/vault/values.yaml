@@ -1,0 +1,117 @@
+# HashiCorp Vault Helm values configuration for TALD UNIA platform
+# Chart version: 0.24.1
+# Vault version: 1.13.1
+
+global:
+  # Disable TLS between Vault server and clients within the cluster
+  tlsDisable: false
+  # OpenShift platform flag
+  openshift: false
+
+# Vault Injector configuration
+injector:
+  enabled: true
+  replicas: 3
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+  metrics:
+    enabled: true
+    prometheusLabels:
+      release: "prometheus"
+
+# Vault Server configuration
+server:
+  image:
+    repository: "hashicorp/vault"
+    tag: "1.13.1"
+    pullPolicy: "IfNotPresent"
+  
+  replicas: 3
+
+  # High Availability configuration
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      setNodeId: true
+
+  # Storage configuration
+  auditStorage:
+    enabled: true
+    size: "10Gi"
+    storageClass: "gp3"
+  
+  dataStorage:
+    enabled: true
+    size: "50Gi"
+    storageClass: "gp3"
+
+  # Resource allocation
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: "nginx"
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    hosts:
+      - host: "vault.tald-unia.com"
+        paths:
+          - path: "/"
+            pathType: "Prefix"
+    tls:
+      - secretName: "vault-tls"
+        hosts:
+          - "vault.tald-unia.com"
+
+  # Service account configuration for AWS IAM integration
+  serviceAccount:
+    create: true
+    annotations:
+      eks.amazonaws.com/role-arn: "${AWS_IAM_ROLE_ARN}"
+
+  # AWS KMS auto-unseal configuration
+  extraEnvironmentVars:
+    VAULT_SEAL_TYPE: "awskms"
+    VAULT_AWSKMS_SEAL_KEY_ID: "${AWS_KMS_KEY_ID}"
+
+  # Metrics configuration
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: "30s"
+
+# UI configuration
+ui:
+  enabled: true
+  serviceType: "ClusterIP"
+  externalPort: 8200
+
+# CSI driver configuration
+csi:
+  enabled: true
+  daemonSet:
+    providersDir: "/etc/kubernetes/secrets-store-csi-providers"
+
+# Pod security configuration
+podSecurityPolicy:
+  enabled: true
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: "runtime/default"
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: "runtime/default"
